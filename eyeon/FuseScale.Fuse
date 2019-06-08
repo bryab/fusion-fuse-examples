@@ -1,0 +1,202 @@
+--[[--
+This Fuse clones the functionality of the standard Scale tool in Fusion as closely as possible.
+It is not intended to replace the Scale tool, but to act as an example for anyone creating 
+a Fuse which needs to mimic part of what Scale does.
+
+Currently this tool does not 
+
+ - support fields
+ 
+Requires   : Fusion 5.21 Build 23 or later
+Written By : Isaac Guenard [izyk@eyeonline.com]
+Written On : December 1st, 2007
+
+Things to document :
+
+
+	
+--]]--
+
+FuRegisterClass("FuseScale", CT_Tool, {
+	REGS_Name = "Fuse Scale",
+	REGS_Category = "Fuses\\Clones\\Transform",
+	REGS_OpIconString = "FScl",
+	REGS_OpDescription = "Fuse Scale",
+	REG_NoMotionBlurCtrls = true,
+	REG_NoObjMatCtrls = true,
+	REG_NoBlendCtrls = true,
+	})
+ 
+function Create()
+		
+	InLockXY = self:AddInput("Lock X/Y", "LockXY", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "CheckboxControl",
+		INP_Integer = true,
+		INP_Default = 1.0,
+		INP_DoNotifyChanged = true, -- We want to hear about changes on this control
+		})
+		
+	InSizeX = self:AddInput("X Size", "XSize", {
+		LINKS_Name = "X Size",
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MaxScale = 5.0,
+		INP_Default = 1.0,
+		ICD_Center = 1.0,
+		})		
+
+	InSizeY = self:AddInput("Y Size", "YSize", {
+		LINKS_Name = "X Size",
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MaxScale = 5.0,
+		INP_Default = 1.0,
+		ICD_Center = 1.0,
+		INP_Visible = false,
+		})		
+		
+	InChangeAspect = self:AddInput("Change Pixel Aspect", "ChangePixelAspect", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "CheckboxControl",
+		INP_Integer = true,
+		INP_Default = 0.0,
+		INP_DoNotifyChanged = true, -- We want to hear about changes on this control
+		})
+		
+	InAspect = self:AddInput("Pixel Aspect", "PixelAspect", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+		INP_OpMenu = true,
+		IC_Visible = false,
+		INP_DefaultX = 1.0,
+		INP_DefaultY = 1.0,
+		})
+		
+	InFilter = self:AddInput("Filter Method", "FilterMethod", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ComboControl",
+		INP_Default = 2.0,
+		{ CCS_AddString = "Nearest Neighbor", },
+		{ CCS_AddString = "Box", },
+		{ CCS_AddString = "Bi-Linear", },
+		{ CCS_AddString = "Bi-Cubic", },
+		{ CCS_AddString = "B-Spline", },
+		{ CCS_AddString = "Catmull-Rom", },
+		{ CCS_AddString = "Gaussian", },
+		{ CCS_AddString = "Mitchell", },
+		{ CCS_AddString = "Lanczos", },
+		{ CCS_AddString = "Sinc", },
+		{ CCS_AddString = "Bessel", },
+		CC_LabelPosition = "Vertical",	
+		ICD_Width = 0.5,
+		INP_DoNotifyChanged = true, -- We want to hear about changes on this control
+		})
+
+	InWindow = self:AddInput("Window Method", "WindowMethod", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ComboControl",
+		INP_Default = 0.0,
+		{ CCS_AddString = "Hanning", },
+		{ CCS_AddString = "Hamming", },
+		{ CCS_AddString = "Blackman", },
+		CC_LabelPosition = "Vertical",	
+		ICD_Width = 0.5,
+		IC_Visible = false,
+		})
+	
+	InImage = self:AddInput("Input", "Input", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+
+	OutImage = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})				
+end
+ 
+function Process(req) 
+	local img = InImage:GetValue(req)
+	local locked = InLockXY:GetValue(req).Value
+	local sizex = InSizeX:GetValue(req).Value
+	local sizey = InSizeY:GetValue(req).Value
+
+	if locked == 1 then
+		sizey = sizex
+	end
+	
+	local changeaspect = InChangeAspect:GetValue(req).Value
+	local aspect = InAspect:GetValue(req)
+	local filter = InFilter:GetValue(req).Value
+	local window = InWindow:GetValue(req).Value
+	
+	local filters = {
+		"Nearest", 
+		"Box", 
+		"BiLinear", 
+		"BiCubic", 
+		"BSpline", 
+		"CatmulRom", 
+		"Gaussian", 
+		"Mitchell", 
+		"Lanczos", 
+		"Sinc", 
+		"Bessel"
+		}
+	local windows = {"Hanning", "Hamming", "Blackman"}
+	
+
+	
+	if (sizex == 1) and (sizey ==1) then
+		-- don't do a damn thing
+		img:Use()
+		OutImage:Set(req, img)
+	
+	else
+	
+		src_width = img.OriginalWidth
+		src_height = img.OriginalHeight
+		
+		-- is the image fielded?
+		-- I don't have support for that yet!
+	
+		-- work out how big the result image is
+		local width = math.floor( src_width * sizex )
+		local height = math.floor( src_height * sizey )
+		
+		-- never let there be an image smaller than 1 pixel
+		width = math.max(width, 1)
+		height = math.max(height, 1)
+		
+		result = Image({IMG_Like = img, IMG_Width = width, IMG_Height = height})
+		img:Resize(result, {
+			RSZ_Filter = filters[filter+1],
+			RSZ_Window = windows[window+1],
+			RSZ_Width = width,
+			RSZ_Height = height,
+--			RSZ_Depth = ,
+		})
+		OutImage:Set(req, result)
+	
+	end
+end
+
+function NotifyChanged(inp, param, time)
+	if inp == InLockXY then   -- Update our sliders
+		local locked = (param.Value > 0.5)
+		
+		if locked then
+			InSizeX:SetAttrs({ LINKS_Name = "Size" })
+			InSizeY:SetAttrs({ IC_Visible = false })
+		else
+			InSizeX:SetAttrs({ LINKS_Name = "X Size" })
+			InSizeY:SetAttrs({ IC_Visible = true })
+		end
+	elseif inp == InFilter then
+	
+		InWindow:SetAttrs({ IC_Visible = ( (param.Value == 8) or (param.Value == 9) ), })
+	elseif inp == InChangeAspect then
+		InAspect:SetAttrs({IC_Visible = (param.Value > 0.5) })
+	end
+end

@@ -1,0 +1,233 @@
+--[[--
+Interpolation 2D Fuse
+
+A modifier Fuse that calculates a position between two or four points.
+It has 3 different modes:
+
+- 2 Points: A simple slider to define a position between two points.
+  Extrapolation is also possible if the slider is < 0 or > 1.
+- 4 Points: Round-trip between 4 points.
+- Weighted 4: Each point is assigned a corresponding weight. The result
+  is calculated from the 4 coordinates, multiplied by their weight.
+  If the "Normalize Weights" checkbox is enabled, the weights will be
+  scaled internally to make sure their sum equals 1.0.
+
+Known issue:
+When the modifier is added, the result is set to a hard-coded default
+value, not to the value that was there before. Currently, the Fuse API
+doesn't allow to change this. If, however, the modifier is inserted
+into an already animated or published input, the value will be kept.
+
+Copyright (c) 2011, Stefan Ihringer <stefan@bildfehler.de>
+
+version 1.0beta,  2011-04-21: initial release
+--]]--
+
+FuRegisterClass("Interpolation2DFuse", CT_Modifier, {
+	REGS_Category = "Fuses",
+	REGS_OpIconString = "I2D",
+	REGS_OpDescription = "Interpolate between 2 or 4 points",
+	REGS_Name = "Interpolation 2D",
+	REGID_DataType = "Point",
+	REGID_InputDataType = "Point",
+	REG_Fuse_NoEdit = true,
+	REG_Fuse_NoReload = true,
+	})
+
+
+function Create()
+	-- interpolation type
+	InType = self:AddInput("Type", "Type", {
+		LINKID_DataType    = "Number",
+		INPID_InputControl = "MultiButtonControl",
+		INP_Default        = 0.0,
+		INP_MinAllowed     = 0.0,
+		INP_MaxAllowed     = 2.0,
+		--MBTNC_StretchToFit = true,
+		{MBTNC_AddButton   = "2 Points",    MBTNCD_ButtonWidth = 0.33, },
+		{MBTNC_AddButton   = "4 Points",    MBTNCD_ButtonWidth = 0.33, },
+		{MBTNC_AddButton   = "Weighted 4", MBTNCD_ButtonWidth = 0.34, },
+		INP_DoNotifyChanged = true,
+		})
+
+	InPoint1 = self:AddInput("Point 1", "Point1", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+		INPID_PreviewControl = "CrosshairControl",
+		INP_DefaultX = 0.4,
+		INP_DefaultY = 0.6,
+		LINK_Main = 1,
+		})
+	InPoint2 = self:AddInput("Point 2", "Point2", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+		INPID_PreviewControl = "CrosshairControl",
+		INP_DefaultX = 0.6,
+		INP_DefaultY = 0.6,
+		LINK_Main = 2,
+		})
+	InPoint3 = self:AddInput("Point 3", "Point3", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+		INPID_PreviewControl = "CrosshairControl",
+		INP_DefaultX = 0.6,
+		INP_DefaultY = 0.4,
+		PC_Visible = false,
+		IC_Visible = false,
+		LINK_Main = 3,
+		})
+	InPoint4 = self:AddInput("Point 4", "Point4", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+		INPID_PreviewControl = "CrosshairControl",
+		INP_DefaultX = 0.4,
+		INP_DefaultY = 0.4,
+		PC_Visible = false,
+		IC_Visible = false,
+		LINK_Main = 4,
+		})
+
+	InAverage = self:AddInput("Interpolated Position", "InterpolatedPosition", {
+		INPID_InputControl = "SliderControl",
+		INP_MinScale = 0,
+		INP_MaxScale = 1,
+		INP_Default = 0,
+		})
+
+	InWeight1 = self:AddInput("Point 1 Weight", "Weight1", {
+		INPID_InputControl = "SliderControl",
+		INP_MinScale = 0,
+		INP_MaxScale = 1,
+		INP_Default = 1,
+		IC_Visible = false,
+		})
+	InWeight2 = self:AddInput("Point 2 Weight", "Weight2", {
+		INPID_InputControl = "SliderControl",
+		INP_MinScale = 0,
+		INP_MaxScale = 1,
+		INP_Default = 0,
+		IC_Visible = false,
+		})
+	InWeight3 = self:AddInput("Point 3 Weight", "Weight3", {
+		INPID_InputControl = "SliderControl",
+		INP_MinScale = 0,
+		INP_MaxScale = 1,
+		INP_Default = 0,
+		IC_Visible = false,
+		})
+	InWeight4 = self:AddInput("Point 4 Weight", "Weight4", {
+		INPID_InputControl = "SliderControl",
+		INP_MinScale = 0,
+		INP_MaxScale = 1,
+		INP_Default = 0,
+		IC_Visible = false,
+		})
+	InNormalize = self:AddInput("Normalize Weights (Sum == 1)", "Normalize", {
+		LINKID_DataType     = "Number",
+		INPID_InputControl  = "CheckboxControl",
+		INP_Integer         = true,
+		INP_Default         = 0,
+		IC_Visible = false,
+		})		
+
+	OutValue = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Point",
+		LINK_Main = 1,
+		})
+end
+
+
+function NotifyChanged(inp, param, time)
+	if inp == InType and param ~= nil then
+		if param.Value < 0.5 then
+			-- 2 Points
+			InPoint3:SetAttrs({IC_Visible = false, PC_Visible = false})
+			InPoint4:SetAttrs({IC_Visible = false, PC_Visible = false})
+			InWeight1:SetAttrs({IC_Visible = false})
+			InWeight2:SetAttrs({IC_Visible = false})
+			InWeight3:SetAttrs({IC_Visible = false})
+			InWeight4:SetAttrs({IC_Visible = false})
+			InNormalize:SetAttrs({IC_Visible = false})
+			InAverage:SetAttrs({IC_Visible = true, INP_MaxScale = 1})
+		elseif param.Value < 1.5 then
+			-- 4 Points
+			InPoint3:SetAttrs({IC_Visible = true, PC_Visible = true})
+			InPoint4:SetAttrs({IC_Visible = true, PC_Visible = true})
+			InWeight1:SetAttrs({IC_Visible = false})
+			InWeight2:SetAttrs({IC_Visible = false})
+			InWeight3:SetAttrs({IC_Visible = false})
+			InWeight4:SetAttrs({IC_Visible = false})
+			InNormalize:SetAttrs({IC_Visible = false})
+			InAverage:SetAttrs({IC_Visible = true, INP_MaxScale = 4})
+		else
+			-- 4 Points with weights
+			InPoint3:SetAttrs({IC_Visible = true, PC_Visible = true})
+			InPoint4:SetAttrs({IC_Visible = true, PC_Visible = true})
+			InWeight1:SetAttrs({IC_Visible = true})
+			InWeight2:SetAttrs({IC_Visible = true})
+			InWeight3:SetAttrs({IC_Visible = true})
+			InWeight4:SetAttrs({IC_Visible = true})
+			InNormalize:SetAttrs({IC_Visible = true})
+			InAverage:SetAttrs({IC_Visible = false})
+		end
+	end
+end
+
+-- interpolate between two points
+function lerp(p1, p2, n)
+	local x = p1.X + n * (p2.X - p1.X)
+	local y = p1.Y + n * (p2.Y - p1.Y)
+	return Point(x,y)
+end
+
+function Process(req)
+	local p1 = InPoint1:GetValue(req)
+	local p2 = InPoint2:GetValue(req)
+	local p3 = InPoint3:GetValue(req)
+	local p4 = InPoint4:GetValue(req)
+	local n = InAverage:GetValue(req).Value
+	local typ = math.floor(InType:GetValue(req).Value + 0.5)
+	local normalize = (InNormalize:GetValue(req).Value > 0.5)
+	local w1 = InWeight1:GetValue(req).Value
+	local w2 = InWeight2:GetValue(req).Value
+	local w3 = InWeight3:GetValue(req).Value
+	local w4 = InWeight4:GetValue(req).Value
+	local result
+	
+	if typ == 0 then
+		-- 2 points (extrapolation possible)
+		result = lerp(p1, p2, n)
+	elseif typ == 1 then
+		-- 4 points (round tripping)
+		-- a is integer part, b is fractional part
+		local a, b = math.modf(n)
+		if b < 0 then
+			b = b + 1
+			a = a - 1
+		end
+		a = a % 4
+		if a == 0 then
+			result = lerp(p1, p2, b)
+		elseif a == 1 then
+			result = lerp(p2, p3, b)
+		elseif a == 2 then
+			result = lerp(p3, p4, b)
+		else
+			result = lerp(p4, p1, b)
+		end		
+	else
+		-- 4 points (weighted)
+		local sum = w1 + w2 + w3 + w4
+		if normalize and sum ~= 0 then
+			w1 = w1 / sum
+			w2 = w2 / sum
+			w3 = w3 / sum
+			w4 = w4 / sum
+		end
+		local x = p1.X * w1 + p2.X * w2 + p3.X * w3 + p4.X * w4
+		local y = p1.Y * w1 + p2.Y * w2 + p3.Y * w3 + p4.Y * w4
+		result = Point(x,y)
+	end
+	
+	OutValue:Set(req, result)
+end

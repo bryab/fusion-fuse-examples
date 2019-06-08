@@ -1,0 +1,250 @@
+--[[
+Letterbox Overlay ViewShader Fuse by Stefan Ihringer (stefan@bildfehler.de)
+
+This shader allows you to create a letterbox overlay as part of your LUT chain
+(usually the final one). It has a few presets for common film and HD formats but
+it also allows you to define a custom letterbox, which is either specified as an
+aspect ratio or by specifying the height of the top and bottom border in actual
+pixels. The latter allows you to perfectly match a frame leader that is off-
+center and requires you to specify the reference height of a full frame.
+
+The major difference from Fusion's own guides overlay is the fact that this
+fuse works for any frame size. This means, it will always show a letterbox of
+the desired aspect ratio, whether you're viewing an anamorphic PAL reference
+edit or the actual 2K plate.
+
+----------------------------------------------------------------------
+Copyright (c) 2012, Stefan Ihringer
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met: 
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer. 
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution. 
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+----------------------------------------------------------------------
+]]--
+
+shader = 
+[[
+struct LetterboxOverlay : ViewShader
+{
+	ViewShader source;			// need this line
+	float top, bottom;			// top and bottom border of black area (normalized coordinates, 0.0 is bottom)
+	float opacity;
+
+	void ShadePixel(inout FuPixel f)
+	{
+		source.ShadePixel(f);			// get source pixel
+		if (f.TexCoord1.y < bottom || f.TexCoord1.y > top) {
+			f.Color *= opacity;
+		}
+	}
+};
+]]
+
+-- regnode
+FuRegisterClass("LetterboxOverlayVSFuse", CT_ViewLUTPlugin, {		-- ID must be unique
+	REGS_Name = "Letterbox Overlay",
+--	REG_Fuse_NoEdit   = true,
+--	REG_Fuse_NoReload = true,
+})
+	
+-- Called on creation. Add any controls here.
+function Create()
+	InPreset = self:AddInput("Preset", "Preset", {
+		LINKID_DataType      = "Number",
+		INPID_InputControl   = "ComboControl",
+		INP_Default          = 1,
+		INP_Integer          = true,
+		{CCS_AddString       = "custom" },
+		{CCS_AddString       = "1.78 (HD 16:9)" },
+		{CCS_AddString       = "1.85 (35mm theatrical)" },
+		{CCS_AddString       = "2.39 (square pixels)" },		-- this will give you a 2.39:1 letterbox on square pixels
+		{CCS_AddString       = "2.39 (2:1 anamorphic)" },		-- this will give you a 2.39:1 letterbox on anamorphic pixels
+		INP_DoNotifyChanged  = true,
+		})
+	InMeasurement = self:AddInput("Measurement", "Measurement", {
+		LINKID_DataType      = "Number",
+		INPID_InputControl   = "MultiButtonControl",
+		INP_Integer          = true,
+		{MBTNC_AddButton     = "Aspect",  MBTNCD_ButtonWidth = 0.5, },
+		{MBTNC_AddButton     = "Pixels",  MBTNCD_ButtonWidth = 0.5, },
+		INP_DoNotifyChanged  = true,
+		IC_Visible           = false,
+		})
+	InAspect = self:AddInput("Aspect Ratio", "Aspect", {
+		LINKID_DataType    = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed     = 1.0,
+		INP_MaxScale       = 4.0,
+		INP_Default        = 1.78,
+		IC_Steps           = 0.1,
+		IC_Visible         = false,
+		})
+	InTopBorder = self:AddInput("Top Border", "TopBorder", {
+		LINKID_DataType    = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed     = 0.0,
+		INP_MaxScale       = 400,
+		INP_Integer        = 1,
+		INP_Default        = 48,
+		IC_Visible         = false,
+		})
+	InBottomBorder = self:AddInput("Bottom Border", "BottomBorder", {
+		LINKID_DataType    = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed     = 0.0,
+		INP_MaxScale       = 400,
+		INP_Integer        = 1,
+		INP_Default        = 280,
+		IC_Visible         = false,
+		})
+	InRefWidth = self:AddInput("Reference Width", "ReferenceWidth", {
+		LINKID_DataType    = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed     = 0.0,
+		INP_MaxScale       = 2048,
+		INP_Integer        = 1,
+		INP_Default        = 2048,
+		IC_Visible         = false,
+		})
+	InRefHeight = self:AddInput("Reference Height", "ReferenceHeight", {
+		LINKID_DataType    = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed     = 0.0,
+		INP_MaxScale       = 2048,
+		INP_Integer        = 1,
+		INP_Default        = 1168,
+		IC_Visible         = false,
+		})
+	InOpacity = self:AddInput("Opacity", "Opacity", {
+		LINKID_DataType    = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed     = 0.0,
+		INP_MaxAllowed     = 1.0,
+		INP_Default        = 1.0,
+		IC_Steps           = 0.1,
+		})
+end
+
+-- This is called when the shader is created
+-- img may be nil
+function SetupShader(req, img)
+	local vs = ViewShader("LetterboxOverlay", shader)	-- pass struct name and shader string
+	vs:AddParam("top")
+	vs:AddParam("bottom")
+	vs:AddParam("opacity")
+	return vs
+end
+
+-- This is called every display refresh
+-- img may be nil
+function SetupParams(req, vs, img)	
+	local preset = InPreset:GetValue(req).Value			-- retrieve control values
+	local use_aspect = InMeasurement:GetValue(req).Value < 1
+	local custom_aspect = math.max(1, InAspect:GetValue(req).Value)
+	local topborder = math.floor(InTopBorder:GetValue(req).Value + 0.5)
+	local bottomborder = math.floor(InBottomBorder:GetValue(req).Value + 0.5)
+	local ref_width = math.floor(InRefWidth:GetValue(req).Value + 0.5)
+	local ref_height = math.floor(InRefHeight:GetValue(req).Value + 0.5)
+
+	local opacity = 1 - math.max(0, math.min(1, InOpacity:GetValue(req).Value))
+
+	-- get frame size and calculate top and bottom border
+	local ref_aspect = ref_width / ref_height
+	local imageaspect = img.Width / img.Height * (img.XScale / img.YScale)
+	local top, bottom
+	local h = 1
+
+	if preset == 0 then
+		-- custom
+		if use_aspect == true then
+			h = imageaspect / custom_aspect 
+		else
+			top = (0.5 - topborder / ref_height) * imageaspect/ref_aspect + 0.5
+			bottom = (bottomborder / ref_height - 0.5) * imageaspect/ref_aspect + 0.5
+		end
+	elseif preset == 1 then
+		-- HD 16:9
+		h = imageaspect / (16/9)
+	elseif preset == 2 then
+		-- 1.85 : 1
+		h = imageaspect / 1.85
+	elseif preset == 3 then
+		-- 2.39 : 1 (but on square pixels)
+		h = imageaspect / 2.39
+	elseif preset == 4 then
+		-- 2.39 anamorphic (expects 2:1 pixel aspect ratio)
+		h = (imageaspect / 2.39) * 2
+	end
+	
+	if top == nil or bottom == nil then
+		top = 0.5 + h/2
+		bottom = 0.5 - h/2
+	end
+
+	-- account for the fact that TexCoord1, which is used for measuring the vertical position
+	-- on a scale of [0..1] actually includes "1" as the topmost value instead of it being just
+	-- outside the image borders like in Fusion's normalized coordinate system.
+	-- Without this correection, the pixel measurement mode wouldn't end up on exact scanlines.
+	local texcoordcorrection = img.Height / (img.Height - 1)
+
+	vs:SetParam(1, top * texcoordcorrection)
+	vs:SetParam(2, bottom * texcoordcorrection)
+	vs:SetParam(3, opacity)
+	return true
+end
+
+function NotifyChanged(inp, param, time)
+	if inp ~= nil and param ~= nil then
+		if inp == InPreset then
+			if (param.Value < 1) then
+				InMeasurement:SetAttrs({IC_Visible = true})
+				local use_aspect = InMeasurement:GetSource(time).Value < 1
+				InAspect:SetAttrs({IC_Visible = use_aspect})
+				InTopBorder:SetAttrs({IC_Visible = not use_aspect})
+				InBottomBorder:SetAttrs({IC_Visible = not use_aspect})
+				InRefWidth:SetAttrs({IC_Visible = not use_aspect})
+				InRefHeight:SetAttrs({IC_Visible = not use_aspect})
+			else
+				InMeasurement:SetAttrs({IC_Visible = false})
+				InAspect:SetAttrs({IC_Visible = false})
+				InTopBorder:SetAttrs({IC_Visible = false})
+				InBottomBorder:SetAttrs({IC_Visible = false})
+				InRefWidth:SetAttrs({IC_Visible = false})
+				InRefHeight:SetAttrs({IC_Visible = false})
+			end
+		elseif inp == InMeasurement then
+			local flag = InPreset:GetSource(time).Value < 1
+			if param.Value < 1 then
+				-- use aspect
+				InAspect:SetAttrs({IC_Visible = flag})
+				InTopBorder:SetAttrs({IC_Visible = false})
+				InBottomBorder:SetAttrs({IC_Visible = false})
+				InRefWidth:SetAttrs({IC_Visible = false})
+				InRefHeight:SetAttrs({IC_Visible = false})
+			else
+				InAspect:SetAttrs({IC_Visible = false})
+				InTopBorder:SetAttrs({IC_Visible = flag})
+				InBottomBorder:SetAttrs({IC_Visible = flag})
+				InRefWidth:SetAttrs({IC_Visible = flag})
+				InRefHeight:SetAttrs({IC_Visible = flag})
+			end
+		end
+	end
+end

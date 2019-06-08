@@ -1,0 +1,59 @@
+--[[-- 
+A dead simple tool for adding metadata to an image.
+
+Written by : eyeon Software (sdk@eyeonline.com)
+Written on : October 5th, 2009
+Requires   : Fusion 6.0 or later.
+
+Updated    : 
+           : 
+
+--]]--
+
+FuRegisterClass("SetMetaData", CT_Tool, {
+	REGS_Name = "Set Metadata",
+	REGS_Category = "Fuses\\eyeon",
+	REGS_OpIconString = "SMe",
+	REGS_OpDescription = "Sets Metadata",
+	REG_NoMotionBlurCtrls = true,
+	REG_NoBlendCtrls = true,
+	})
+ 
+function Create()
+	InFieldName = self:AddInput("Field Name", "FieldName", {
+		LINKID_DataType = "Text",
+		INPID_InputControl = "TextEditControl",
+		TEC_Lines = 1,
+	})
+	
+	InFieldValue = self:AddInput("Field Value", "FieldValue", {
+		LINKID_DataType = "Text",
+		INPID_InputControl = "TextEditControl",
+		TEC_Lines = 1,
+	})
+	
+	InImage = self:AddInput("Input", "Input", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+	
+	OutImage = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})				
+end
+ 
+function Process(req) 
+	local f_name = InFieldName:GetValue(req).Value
+	local f_value = InFieldValue:GetValue(req).Value
+    local img = InImage:GetValue(req)
+	local result = img:Copy()
+
+    local newmetadata = result.Metadata or {}
+	
+    newmetadata[f_name] = f_value
+    
+	result.Metadata = newmetadata
+    OutImage:Set(req, result)
+end
+

@@ -1,0 +1,44 @@
+-- Simple fuse to promote alpha-only masks to RGBA images.
+-- Written 16-Sept-09
+
+FuRegisterClass("AlphaToRGBA", CT_Tool, {
+	REGS_Name = "AlphaToRGBA",
+	REGS_Category = "Fuses",
+	REGS_OpIconString = "AtR",
+	REGS_OpDescription = "Converts alpha masks to RGBA images",
+	REG_OpNoMask = true,
+	REG_NoCommonCtrls = true,
+	REG_SupportsDoD = true,			-- need this to get useful DataWindows
+	})
+ 
+function Create()
+	InImage = self:AddInput("Input", "Input", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+
+	OutImage = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})				
+end
+ 
+function Process(req) 
+	local img = InImage:GetValue(req)
+	local out
+
+	if img then
+		out = Image{
+			IMG_Like = img,						-- start with original image
+			{ IMG_Channel = "Red"   },			-- and override its channel selection
+			{ IMG_Channel = "Green" },
+			{ IMG_Channel = "Blue"  },
+			{ IMG_Channel = "Alpha" },
+			IMG_DataWindow = img.DataWindow,	-- pass through the datawindow
+		}
+		if out then
+			out = out:ChannelOpOf("copy", img, {  A = "fg.a" })	-- R = "fg.a", G = "fg.a", B = "fg.a",
+		end
+	end
+	OutImage:Set(req, out)
+end

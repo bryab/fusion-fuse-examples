@@ -1,0 +1,44 @@
+--[[--
+Null.Fuse 
+
+About as simple as it gets. This tool doesn't actually do anything - it just passes the input to the output. An example of the bare minimum required to create a tool.
+
+version 1.0
+August 21st, 2007
+--]]--
+
+FuRegisterClass("Null", CT_Tool, {
+	REGS_Category = "Fuses\\eyeon\\Examples",
+	REGS_OpIconString = "Nul",
+	REGS_OpDescription = "Null Fuse",
+	REG_OpNoMask = true,
+	REG_NoBlendCtrls = true,
+	REG_NoObjMatCtrls = true,
+	REG_NoMotionBlurCtrls = true,
+	})
+
+function Create()
+
+	InBlank = self:AddInput(" ", "Blank", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "LabelControl",
+		INP_External = false,
+		})			
+
+	InImage = self:AddInput("Input", "Input", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+
+	OutImage = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})				
+end
+
+function Process(req) 
+	local img = InImage:GetValue(req)
+	img:Use()
+	
+	OutImage:Set(req, img)
+end

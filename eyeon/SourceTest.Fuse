@@ -1,0 +1,80 @@
+--[[--
+SourceTest.Fuse 
+
+A Creator type tool. This creates an image full of random noise. A good example of how to create new images.
+
+version 1.0
+August 21st, 2007
+--]]--
+
+FuRegisterClass("Source", CT_SourceTool, {
+	REGS_Category = "Fuses",
+	REGS_OpIconString = "fSc",
+	REGS_OpDescription = "Source Fuse",
+	
+	REG_Source_GlobalCtrls = true,
+	REG_Source_SizeCtrls = true,
+	REG_Source_AspectCtrls = true,
+	REG_Source_DepthCtrls = true,
+	
+	REG_TimeVariant = true,
+	})
+
+
+function Create()
+end
+
+function Process(req) 
+	local realwidth = Width;
+	local realheight = Height;
+	
+	-- We'll handle proxy ourselves
+	Width = Width / Scale
+	Height = Height / Scale
+	Scale = 1
+	
+	local imgattrs = {
+		IMG_Document = self.Comp,
+		{ IMG_Channel = "Red", },
+		{ IMG_Channel = "Green", },
+		{ IMG_Channel = "Blue", },
+		{ IMG_Channel = "Alpha", },
+		IMG_Width = Width,
+		IMG_Height = Height,
+		IMG_XScale = XAspect,
+		IMG_YScale = YAspect,
+		IMAT_OriginalWidth = realwidth,
+		IMAT_OriginalHeight = realheight,
+		IMG_Quality = not req:IsQuick(),
+		IMG_MotionBlurQuality = not req:IsNoMotionBlur(),
+		}
+	
+	if not req:IsStampOnly() then
+		imgattrs.IMG_ProxyScale = 1
+	end
+	
+	if SourceDepth ~= 0 then
+		imgattrs.IMG_Depth = SourceDepth
+	end
+	
+	
+	local img = Image(imgattrs)
+	
+	local random = math.random -- faster in a local
+	
+	local p = Pixel({A=1})
+	
+	for y=0,Height-1 do
+		if self.Status ~= "OK" then break end
+		
+		for x=0,Width-1 do
+			p.R = random()
+			p.G = random()
+			p.B = random()
+			img:SetPixel(x,y, p)
+		end
+	end
+	
+	OutImage:Set(req, img)
+	
+end

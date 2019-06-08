@@ -1,0 +1,500 @@
+--[[--
+ParticleEmitterTest.Fuse 
+
+A nearly complete reimplementation of the pEmitter tool as a Fuse.
+
+version 1.0
+August 21st, 2007
+--]]--
+
+FuRegisterClass("pEmitter", CT_ParticleTool, {
+	REGS_Category = "Fuses",
+	REGS_OpIconString = "fPE",
+	REGS_OpDescription = "Particle Emitter Fuse",
+	
+	REG_Unpredictable = true,
+	REG_NoAutoProxy = true,
+	REG_NoBlendCtrls = true,
+	REG_NoObjMatCtrls = true,
+	REG_NoMotionBlurCtrls = true,
+	REG_OpNoMask = true,
+	REGS_HelpTopic = "http://vfxpedia.com",
+
+	REG_Particle_ProbabilityCtrls = false,
+	REG_Particle_RegionModeCtrls = false,
+	REG_Particle_SetCtrls = false,
+	REG_Particle_AgeRangeCtrls = false,
+
+	REG_Particle_RegionCtrls = true,
+	REG_Particle_StyleCtrls = true,
+
+	REGID_Particle_DefaultRegion = "SphereRgn",
+	
+	REG_ScriptPlugin_NoEdit = false,
+	REG_ScriptPlugin_NoReload = false,
+	})
+
+
+function Create()
+	self:AddControlPage("Controls")
+
+	InNumber = self:AddInput("Number", "Number", {
+		LINKID_DataType = "Number",
+		INPID_InputControl =  "SliderControl",
+		INP_Default =      10.0,
+		INP_MinAllowed =    0.0,
+		INP_MaxScale =    100.0,
+		})
+
+	InNumberVar = self:AddInput("Number Variance", "NumberVariance", {
+		LINKID_DataType = "Number",
+		INPID_InputControl =  "SliderControl",
+		INP_Default =       0.0,
+		INP_MinAllowed =    0.0,
+		INP_MaxScale =    100.0,
+		})
+
+	InLifespan = self:AddInput("Lifespan", "Lifespan", {
+		LINKID_DataType = "Number",
+		INPID_InputControl =  "SliderControl",
+		INP_Default =       100.0,
+		INP_MinAllowed =      0.0,
+		INP_MaxScale =     1000.0,
+		})
+
+	InLifespanVar = self:AddInput("Lifespan Variance", "LifespanVariance", {
+		LINKID_DataType = "Number",
+		INPID_InputControl =  "SliderControl",
+		INP_Default =         0.0,
+		INP_MinAllowed =      0.0,
+		INP_MaxScale =      100.0,
+		})
+	
+	InColorSource = self:AddInput("Color", "Color", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ComboControl",
+		{ CCS_AddString =     "Use Style Color" },
+		{ CCS_AddString =     "Use Color from Region" }
+		--CCS_AddString =     "Use Color from Color Map",
+		})
+	
+	InPositionVar = self:AddInput("Position Variance", "PositionVariance", {
+		LINKID_DataType = "Number",
+		INPID_InputControl =  "SliderControl",
+		INP_Default =       0.0,
+		INP_MinScale =      0.0,
+		INP_MaxScale =      0.1,
+		})
+	
+	self:BeginControlNest("Velocity Controls", "VelocityControls", false, {})
+		InVelocity = self:AddInput("Velocity", "Velocity", {
+			LINKID_DataType = "Number",
+			INPID_InputControl =  "SliderControl",
+			INP_Default =       0.0,
+			INP_MinScale =      0.0,
+			INP_MaxScale =      1.0,
+			})
+
+		InVelocityVar = self:AddInput("Velocity Variance", "VelocityVariance", {
+			LINKID_DataType = "Number",
+			INPID_InputControl =  "SliderControl",
+			INP_Default =       0.0,
+			INP_MinScale =      0.0,
+			INP_MaxScale =      1.0,
+			})
+
+		InVelAngle = self:AddInput("Angle", "Angle", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "ScrewControl",
+			INP_MinScale =      0.0,
+			INP_MaxScale =    360.0,
+			INP_Default = 	0.0,
+			})
+
+		InVelAngleVar = self:AddInput("Angle Variance", "AngleVariance", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "ScrewControl",
+			INP_MinScale =    0.0,
+			INP_MaxScale = 360.0,
+			INP_Default =   0.0,
+			})
+
+		InVelAngleZ = self:AddInput("Angle Z", "AngleZ", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "ScrewControl",
+			INP_MinScale =      0.0,
+			INP_MaxScale =    360.0,
+			INP_Default = 	0.0,
+			})
+
+		InVelAngleZVar = self:AddInput("Angle Z Variance", "AngleZVariance", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "ScrewControl",
+			INP_MinScale =    0.0,
+			INP_MaxScale = 360.0,
+			INP_Default =   0.0,
+			})
+
+		InInheritVelocity = self:AddInput("Inherit Velocity", "InheritVelocity", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_Default =        0.0,
+			INP_MinScale =      -2.0,
+			INP_MaxScale =       2.0,
+			})
+
+		InInheritVelocityVar = self:AddInput("Inherit Velocity Variance", "InheritVelocityVariance", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_Default =        0.0,
+			INP_MinScale =       0.0,
+			INP_MaxScale =       1.0,
+			})
+	self:EndControlNest()
+	
+	self:BeginControlNest("Rotation Controls", "RotationControls", false, {})
+		InRotMode = self:AddInput("Rotation Mode", "RotationMode", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "ComboControl",
+			{ CCS_AddString =     "Absolute rotation" },
+			{ CCS_AddString =     "Rotation relative to motion" },
+			})
+		
+		InFaceCamera = self:AddInput("Always Face Camera", "AlwaysFaceCamera", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "CheckboxControl",
+			INP_Default =      1.0,
+			})
+
+		self:BeginControlNest("Rotation", "Rotation", false, {})
+			InRotX = self:AddInput("Rotation X (3D Only)", "RotationX", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =      0.0,
+				INP_MaxScale =    360.0,
+				INP_Default = 	0.0,
+				})
+
+			InRotY = self:AddInput("Rotation Y (3D Only)", "RotationY", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =      0.0,
+				INP_MaxScale =    360.0,
+				INP_Default = 	0.0,
+				})
+
+			InRotZ = self:AddInput("Rotation Z", "RotationZ", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =      0.0,
+				INP_MaxScale =    360.0,
+				INP_Default = 	0.0,
+				})
+		self:EndControlNest()
+
+		self:BeginControlNest("Rotation Variance", "RotationVariance", false, {})
+			InRotXVar = self:AddInput("Rotation X Variance (3D Only)", "RotationXVariance", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =    0.0,
+				INP_MaxScale = 360.0,
+				INP_Default =   0.0,
+				})
+
+			InRotYVar = self:AddInput("Rotation Y Variance (3D Only)", "RotationYVariance", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =    0.0,
+				INP_MaxScale = 360.0,
+				INP_Default =   0.0,
+				})
+
+			InRotZVar = self:AddInput("Rotation Z Variance", "RotationZVariance", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =    0.0,
+				INP_MaxScale = 360.0,
+				INP_Default =   0.0,
+				})
+		self:EndControlNest()
+
+		self:BeginControlNest("Spin", "Spin", false, {})
+			InSpinX = self:AddInput("Spin X (3D Only)", "SpinX", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =      0.0,
+				INP_MaxScale =    360.0,
+				INP_Default = 	0.0,
+				})
+
+			InSpinY = self:AddInput("Spin Y (3D Only)", "SpinY", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =      0.0,
+				INP_MaxScale =    360.0,
+				INP_Default = 	0.0,
+				})
+
+			InSpinZ = self:AddInput("Spin Z", "SpinZ", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =      0.0,
+				INP_MaxScale =    360.0,
+				INP_Default = 	0.0,
+				})
+		self:EndControlNest()
+
+		self:BeginControlNest("Spin Variance", "SpinVariance", false, {})
+			InSpinXVar = self:AddInput("Spin X Variance (3D Only)", "SpinXVariance", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =    0.0,
+				INP_MaxScale = 360.0,
+				INP_Default =   0.0,
+				})
+
+			InSpinYVar = self:AddInput("Spin Y Variance (3D Only)", "SpinYVariance", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =    0.0,
+				INP_MaxScale = 360.0,
+				INP_Default =   0.0,
+				})
+
+			InSpinZVar = self:AddInput("Spin Z Variance", "SpinZVariance", {
+				LINKID_DataType = "Number",
+				INPID_InputControl = "ScrewControl",
+				INP_MinScale =    0.0,
+				INP_MaxScale = 360.0,
+				INP_Default =   0.0,
+				})
+		self:EndControlNest()
+	self:EndControlNest()
+
+	self:AddControlPage("Sets")
+
+	InSet = {}
+	
+	for y=1,8 do
+		for x=1,4 do
+			local num = (y-1)*4+x
+
+			InSet[num] = self:AddInput("Set " .. tostring(num), "Set" .. tostring(num), {
+				LINKID_DataType = "Number",
+				INPID_InputControl =  "CheckboxControl",
+				INP_Default =			0.0,
+				ICD_Width =				0.25,
+				})
+		end
+	end
+	
+	OutParticles = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Particles",
+		LINK_Main = 1,
+		})
+end
+
+
+local random = math.random
+
+
+function Process(req) 
+	local part = nil -- no particles yet
+	
+	local prev = req.SourceImg
+
+	if prev then
+		part = Particles(prev, self.ID)
+
+		if prev.Time == TIME_UNDEFINED then
+			part.Time = req.Time
+		else
+			part.Time = (prev.Time + prev.Delta)
+		end
+
+		local style = self:GetStyle()
+		local region = self:GetRegion()
+		
+		region:RenderStart(req.Time, req, part.Img)
+		
+		local numnew = InNumber:GetValue(req).Value + (random()-0.5) * InNumberVar:GetValue(req).Value
+		
+		local data = part:GetExtraData(self.ID, 1)
+		if not data then
+			part:AddExtraData(self.ID, 1, "F")
+			
+			data = { 0.0 }
+		end
+		
+		if part.Restart then
+			data[1] = 0.0
+		end
+				
+		numnew = data[1] + numnew * part.Delta
+		
+		local num = math.floor(data[1])
+		
+		data[1] = numnew - num
+		
+		part:SetExtraData(self.ID, 1, data)
+		
+
+		m_TotalParticles = num
+		m_AffectedParticles = num
+
+		for j=1, part.NumGroups do
+			m_TotalParticles = m_TotalParticles + part:GetGroup(j).NumParticles
+		end
+
+		local vel  = InVelocity:GetValue(req).Value
+		local vvar = InVelocityVar:GetValue(req).Value
+		
+		local ivel  = InInheritVelocity:GetValue(req).Value
+		local ivvar = InInheritVelocityVar:GetValue(req).Value
+
+		local ang   = InVelAngle:GetValue(req).Value
+		local avar  = InVelAngleVar:GetValue(req).Value
+		local angz  = InVelAngleZ:GetValue(req).Value
+		local azvar = InVelAngleZVar:GetValue(req).Value
+
+		local pvar = InPositionVar:GetValue(req).Value
+
+
+		local rotmode  = InRotMode:GetValue(req).Value
+
+		local rotx    = InRotX:GetValue(req).Value
+		local rotxvar = InRotXVar:GetValue(req).Value
+		local roty    = InRotY:GetValue(req).Value
+		local rotyvar = InRotYVar:GetValue(req).Value
+		local rotz    = InRotZ:GetValue(req).Value
+		local rotzvar = InRotZVar:GetValue(req).Value
+
+		local spinx    = InSpinX:GetValue(req).Value
+		local spinxvar = InSpinXVar:GetValue(req).Value
+		local spiny    = InSpinY:GetValue(req).Value
+		local spinyvar = InSpinYVar:GetValue(req).Value
+		local spinz    = InSpinZ:GetValue(req).Value
+		local spinzvar = InSpinZVar:GetValue(req).Value
+
+		local facecam  = InFaceCamera:GetValue(req).Value > 0.5
+
+		local clrsrc = InColorSource:GetValue(req).Value
+
+		local flags = 0
+
+		if rotmode == 1 then
+			flags = bit.bor(flags, PARTF_RotateToMotion)
+		end
+
+		-- Convert to usable range
+		vel = vel / 10.0
+		vvar = vvar / 10.0
+
+		if num > 0 then
+			
+			local grp = ParticleGroup(num)
+
+			--grp.Style       = nil
+			grp.StyleSource = self.ID
+			grp.StyleID     = 1
+
+			grp.SourceID    = self.ID
+			
+
+			if facecam then
+				grp.Flags = bit.bor(grp.Flags, PARTGF_AlwaysFaceCamera)
+			else
+				grp.Flags = bit.band(grp.Flags, bit.bnot(PARTGF_AlwaysFaceCamera))
+			end
+
+			grp.BirthTime        = part.Time
+			
+			grp.Lifespan         = InLifespan:GetValue(req).Value
+			grp.LifespanVariance = InLifespanVar:GetValue(req).Value
+
+			local setmask = 0
+
+			for i=1,32 do
+				if InSet[i]:GetValue(req).Value > 0.5 then
+					setmask = bit.bor(setmask, bit.lshift(1, i-1))
+				end
+			end
+
+			grp.SetMask = setmask
+			
+			style:StartInitGroup(req.Time, req, grp)
+
+			part:AddGroup(grp)
+
+			
+			local pix = nil
+			
+			if clrsrc == 1 then
+				pix = Pixel()
+			end
+			
+			
+			for i=1,num do
+				if self.Status ~= "OK" then
+					break
+				end
+				
+				local p = grp:GetParticle(i)
+				
+				if region:RandPoint(p.Position, pix) > 0.5 then
+					local d = (vel + (random()-0.5) * vvar) -- * part->Delta
+
+					local vec = Vector3f(d, 0, 0)
+					
+					local mat = Matrix4()
+
+					mat:RotZ(ang  + (random()-0.5) * avar)
+					mat:RotY(- (angz + (random()-0.5) * azvar))
+
+					--mat:RotX((random()-0.5) * avar)
+
+					if pvar > 0.0 then
+						local pos = Vector3f(random()-0.5, random()-0.5, random()-0.5)
+						pos:Normalize()
+						
+						p.Position = p.Position + pos * random() * pvar
+					end
+					
+					p.Velocity = vec * mat
+					
+					local rv = Vector3f()
+					
+					local iv = (ivel + (random()-0.5) * ivvar)
+					if (iv ~= 0.0) and region:GetVelocity(rv) then
+						p.Velocity = p.Velocity + (rv * iv)
+					end
+					
+					p.Rotation = Vector3f(rotx + (random()-0.5) * rotxvar, roty + (random()-0.5) * rotyvar, rotz + (random()-0.5) * rotzvar)
+					p.Spin     = Vector3f(spinx + (random()-0.5) * spinxvar, spiny + (random()-0.5) * spinyvar, spinz + (random()-0.5) * spinzvar)
+					
+					p.PrevVelocity = p.Velocity
+					p.PrevSpin = p.Spin
+
+					p.Flags = flags
+
+					p.Mass = 1.0
+
+					p.LifespanVar = random(256)-1
+
+					style:InitParticle(req.Time, req, grp, i, pix)
+				else
+					p.Flags = bit.bor(p.Flags, PARTF_Dead)
+				end
+			end
+
+			style:EndInitGroup(req.Time, req, grp)
+		end
+
+		region:RenderEnd()
+	end
+
+	self:TouchParticles(part)
+	
+	OutParticles:Set(req, part)
+end
+

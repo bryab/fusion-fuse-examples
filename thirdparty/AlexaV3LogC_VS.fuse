@@ -1,0 +1,69 @@
+--[[
+AlexaV3LogC ViewShader Fuse by Stefan Ihringer (stefan@bildfehler.de)
+Converts Alexa's LogC into linear gamma space and back.
+Also added option to convert directly to sRGB for viewing LogC images on the fly.
+Based on GainGammaVS.fuse.
+]]--
+
+shader = 
+[[
+struct AlexaV3LogC : ViewShader
+{
+	ViewShader source;					// need this line
+	float mode;							// 0 = log-to-lin, 1 = lin-to-log
+
+	void ShadePixel(inout FuPixel f)
+	{
+		source.ShadePixel(f);			// get source pixel
+		
+		if (mode == 2) {
+			// lin to log
+			f.Color.rgb = f.Color.rgb > 0.01062324f ? log10((f.Color.rgb + 0.00937677f) / 0.18f) * 0.2471894f + 0.385537f : (((f.Color.rgb + 0.00937677f) / 0.18f + 0.04378604f) * 0.9661776f);
+		} else {
+			// log to lin
+			f.Color.rgb = (f.Color.rgb > 0.1496582f ? pow(float3(10,10,10), (f.Color.rgb - 0.385537f) / 0.2471896f) : f.Color.rgb / 0.9661776f - 0.04378604f) * 0.18f - 0.00937677f;
+			if (mode == 1) {
+				// lin to sRGB
+				f.Color.rgb = f.Color.rgb > 0.0031308 ? 1.055f * pow(f.Color.rgb, float3(1,1,1) / 2.4f) - 0.055f : 12.92f * f.Color.rgb;
+			}
+		}
+	}
+};
+]]
+
+-- regnode
+FuRegisterClass("AlexaV3LogCVSFuse", CT_ViewLUTPlugin, {		-- ID must be unique
+	REGS_Name = "AlexaV3LogC Fuse",
+	REG_Fuse_NoEdit   = true,
+	REG_Fuse_NoReload = true,
+	})
+	
+-- Called on creation. Add any controls here.
+function Create()
+	InMode = self:AddInput("Conversion Mode", "ConversionMode", {
+		LINKID_DataType      = "Number",
+		INPID_InputControl   = "MultiButtonControl",
+		INPID_Default        = 0,
+		{MBTNC_AddButton     = "LogC to Linear" },
+		{MBTNC_AddButton     = "LogC to sRGB" },
+		{MBTNC_AddButton     = "Linear to LogC" },
+		MBTNC_StretchToFit   = true,
+		MBTNC_ShowName       = true,
+		})
+end
+
+-- This is called when the shader is created
+-- img may be nil
+function SetupShader(req, img)
+	local vs = ViewShader("AlexaV3LogC", shader)	-- pass struct name and shader string
+	modeparam = vs:AddParam("mode");				-- add any external parameters 
+	return vs
+end
+
+-- This is called every display refresh
+-- img may be nil
+function SetupParams(req, vs, img)	
+	local mode = InMode:GetValue(req).Value			-- retrieve control values
+	vs:SetParam(modeparam, mode)					-- and setup the shader's parameter values
+	return true
+end

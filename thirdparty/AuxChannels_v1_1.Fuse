@@ -1,0 +1,258 @@
+--[[--
+Aux Channels Fuse for Fusion 6.31+
+
+This Fuse allows you to add or remove auxilliary channels (like Z depth,
+normals or world position) to and from an image. Especially the remove
+option is useful to save memory - you usually don't need to pipe, say,
+world position info from a Renderer3D all the way to the saver. The "Keep"
+option removes all aux channels *except* the select ones. RGBA will always
+be present in the output image and cannot be removed.
+If you add channels, you can initialize them with a value of your choice.
+
+----------------------------------------------------------------------
+Copyright (c) 2012, Stefan Ihringer
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met: 
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer. 
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution. 
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+----------------------------------------------------------------------
+--]]--
+
+version = "version 1.1, 2012-12-02"
+
+
+FuRegisterClass("AuxChannels", CT_Tool, {
+	REGS_Name          = "Aux Channels",
+	REGS_Category      = "Miscellaneous",
+	REGS_OpIconString  = "Aux",
+	REGS_OpDescription = "Add or Remove Auxilliary Channels",
+	REGS_Company       = "Stefan Ihringer",
+	REGS_URL           = "http://www.bildfehler.de",
+	REGS_HelpTopic     = "http://www.vfxpedia.com/index.php?title=Third_Party_Fuses/Aux_Channels_Description",
+	REG_NoCommonCtrls  = true,
+	REG_SupportsDoD    = true,
+	REG_Fuse_NoEdit    = true,
+	REG_Fuse_NoReload  = true,
+	REG_NoPreCalcProcess = true,
+	})
+
+function Create()	
+	InMode = self:AddInput("Mode", "Mode", {
+		LINKID_DataType    = "Number",
+		INPID_InputControl = "MultiButtonControl",
+		INP_Default        = 1.0,
+		{MBTNC_AddButton   = "Add",    MBTNCD_ButtonWidth = 0.33, },
+		{MBTNC_AddButton   = "Remove", MBTNCD_ButtonWidth = 0.33, },
+		{MBTNC_AddButton   = "Keep",   MBTNCD_ButtonWidth = 0.34, },
+		INP_DoNotifyChanged = true,
+		})
+
+	-- channel checkboxes
+	InOpts = {}
+	InOpts[CHAN_Z]        = self:AddInput("Z",           "Z",          {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.33,})
+	InOpts[CHAN_COVERAGE] = self:AddInput("Coverage",    "Coverage",   {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.33,})
+	InOpts[CHAN_BGR]      = self:AddInput("BgColor",     "BgColor",    {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.34,})
+	InOpts[CHAN_NORMALX]  = self:AddInput("Normals",     "Normals",    {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.33,})
+	InOpts[CHAN_U]        = self:AddInput("UVs (TexCoord0)", "TexCoord0", {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.33,})
+	InOpts[CHAN_POSITIONX]= self:AddInput("Positions",   "Positions",  {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.34,})
+
+	InOpts[CHAN_VECTORX]  = self:AddInput("Vectors",         "Vectors",     {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.33,})
+	InOpts[CHAN_BACKVECTORX] = self:AddInput("Back Vectors", "BackVectors", {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.33,})
+	InOpts[CHAN_DISPARITYX] = self:AddInput("Disparities",   "Disparities", {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.34,})
+
+	InOpts[CHAN_OBJECT]   = self:AddInput("Object ID",   "ObjectID",   {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.33,})
+	InOpts[CHAN_MATERIAL] = self:AddInput("Material ID", "MaterialID", {LINKID_DataType = "Number", INPID_InputControl = "CheckboxControl", INP_Default = 0, ICD_Width = 0.67,})
+
+	-- select all/none buttons
+	BtnSelectAll = self:AddInput("Select All", "SelectAll", {
+		LINKID_DataType     = "Number",
+		INPID_InputControl  = "ButtonControl",
+		INP_External        = false,
+		INP_DoNotifyChanged = true,
+		INP_InitialNotify   = false,
+		ICD_Width = 0.5,
+		})
+	BtnSelectNone = self:AddInput("Select None", "SelectNone", {
+		LINKID_DataType     = "Number",
+		INPID_InputControl  = "ButtonControl",
+		INP_External        = false,
+		INP_DoNotifyChanged = true,
+		INP_InitialNotify   = false,
+		ICD_Width = 0.5,
+		})
+		
+	-- color (for add mode)
+	InValue = self:AddInput("Initial Value", "InitialValue", {
+		LINKID_DataType    = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinScale       = -1.0,
+		INP_MaxScale       = 1.0,
+		INP_Default        = 0.0,
+		IC_Visible         = false,
+		})
+		
+	-- if enabled, will fill canvas with color
+	InDoCanvas = self:AddInput("Affect Canvas Color", "DoCanvas", {
+		LINKID_DataType      = "Number",
+		INPID_InputControl   = "CheckboxControl",
+		INP_Default          = 0,
+		IC_Visible           = false,
+		})
+
+	InLabel = self:AddInput("Aux Channels "..version, "version", {
+		LINKID_DataType    = "Text",
+		INPID_InputControl = "LabelControl",
+		INP_External       = false,
+		INP_Passive        = true,
+		})
+
+	-- image input
+	InImage = self:AddInput("Input", "Input", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+
+	-- output
+	OutImage = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+end
+
+
+function NotifyChanged(inp, param, time)
+	if inp ~= nil and param ~= nil then
+		if inp == BtnSelectAll and param.Value > 0.5 then
+			for k,v in pairs(InOpts) do
+				v:SetSource(Number(1.0), time)
+			end
+		elseif inp == BtnSelectNone and param.Value > 0.5 then
+			for k,v in pairs(InOpts) do
+				v:SetSource(Number(0.0), time)
+			end
+		end
+		
+		-- show/hide value slider
+		if inp == InMode then
+			if (param.Value < 0.5) then
+				InValue:SetAttrs({IC_Visible = true})
+				InDoCanvas:SetAttrs({IC_Visible = true})
+			else
+				InValue:SetAttrs({IC_Visible = false})
+				InDoCanvas:SetAttrs({IC_Visible = false})
+			end
+		end
+	end
+end
+
+
+function Process(req)
+	local img = InImage:GetValue(req)
+	local mode = math.min(2, math.floor(InMode:GetValue(req).Value + 0.5))
+	local fill = InValue:GetValue(req).Value
+	local docanvas = InDoCanvas:GetValue(req).Value >= 0.5
+
+	-- read checkbox array
+	local selected = {}
+	for c,inp in pairs(InOpts) do
+		local val = (inp:GetValue(req).Value > 0.5)
+		selected[c] = val
+		-- expand checkboxes for channel sets
+		if c == CHAN_BGR then
+			selected[CHAN_BGG], selected[CHAN_BGB], selected[CHAN_BGA] = val, val, val
+		elseif c == CHAN_NORMALX then
+			selected[CHAN_NORMALY] = val
+			selected[CHAN_NORMALZ] = val
+		elseif c == CHAN_U then
+			selected[CHAN_V] = val
+		elseif c == CHAN_POSITIONX then
+			selected[CHAN_POSITIONY], selected[CHAN_POSITIONZ] = val, val
+		elseif c == CHAN_VECTORX then
+			selected[CHAN_VECTORY] = val
+		elseif c == CHAN_BACKVECTORX then
+			selected[CHAN_BACKVECTORY] = val
+		elseif c == CHAN_DISPARITYX then
+			selected[CHAN_DISPARITYY] = val
+		end
+	end
+
+	-- array of channels that exist in the image. The indices are based on the channel constants from Pixel.h. Since LUA tables are 1-based
+	-- but the first constant (CHAN_RED) is zero, it is omitted. Channels that belong together (like U and V) are treated as a tuple anyways.
+	local has_channels = {}
+	-- array of new channels (for Add mode), doesn't include those that already exist
+	local new_channels = {}
+	-- array of remaining channels (for Remove and Keep modes)
+	local out_channels = {}
+	for i = 4, 29 do
+		has_channels[i] = (img:GetChanSize(i) > 0)
+		if mode == 0 then
+			-- add
+			new_channels[i] = (not has_channels[i]) and selected[i]
+		elseif mode == 1 then
+			-- remove
+			out_channels[i] = has_channels[i] and (not selected[i])
+		else
+			-- keep
+			out_channels[i] = has_channels[i] and selected[i]
+		end
+	end
+	
+	if mode == 0 and req:IsPreCalc() == false then
+		-- "R" is once again omitted
+		local channel_op_strings = {"G", "B", "A", "BgR", "BgG", "BgB", "BgA", "", "", "", "", "Z", "U", "V", "Coverage", "ObjectID", "MaterialID",
+				"NX", "NY", "NZ", "VectX", "VectY", "BackVectX", "BackVectY", "PositionX", "PositionY", "PositionZ", "DisparityX", "DisparityY" }
+		local params = {}
+
+		for i = 4, 29 do
+			if new_channels[i] then
+				params[channel_op_strings[i]] = fill
+			end
+		end
+
+		local out = img:CopyOf()
+		out = out:ChannelOpOf("Copy", nil, params)
+		if not docanvas then
+			local canvaspixel = Pixel()
+			img:GetCanvasColor(canvaspixel)
+			out:SetCanvasColor(canvaspixel)
+		end
+		OutImage:Set(req, out)
+	else
+		-- create output for remove and keep as well as precalc requests (for all modes)
+		-- The names for the Image constructor are slightly different to the ones from ChannelOpOf():
+		local channel_names = {"Green", "Blue", "Alpha", "BgRed", "BgGreen", "BgBlue", "BgAlpha", "", "", "", "", "Z", "U", "V", "Coverage",
+				"Object", "Material", "NormalX", "NormalY", "NormalZ", "VectorX", "VectorY", "BackVectorX", "BackVectorY",
+				"PositionX", "PositionY", "PositionZ", "DisparityX", "DisparityY" }
+		local imgopts = {IMG_Like = img, IMG_NoData = req:IsPreCalc(),
+		                 IMG_CopyChannels = false, {IMG_Channel = "Red"}, {IMG_Channel = "Green"}, {IMG_Channel = "Blue"}, {IMG_Channel = "Alpha"}, }
+
+		for i = 4, 29 do
+			if out_channels[i] then
+				table.insert(imgopts, {IMG_Channel = channel_names[i]})
+			end
+		end
+
+		local out = Image(imgopts)
+		img:Crop(out, {})		-- duplicates input image discarding those channels that haven't been created in output image
+		OutImage:Set(req, out)
+	end
+
+end
+

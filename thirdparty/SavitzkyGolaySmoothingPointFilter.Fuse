@@ -1,0 +1,305 @@
+--[[--
+SavitzkyGolaySmoothingPointFilter.Fuse 
+
+This tool smoothes point data
+
+Requires   : Fusion 5.21 Build 23 or later
+Written By : Srecko Zrilic [srecko@eyeonline.com]
+Written On : May 06th, 2008
+
+Usage      : First option: select this tool to animate any point input, then animate
+	     the "Point Input" with any other point modifier.
+	     Second option: insert this tool to an already animated point input via
+	     the "Insert" submenu of the input control context menu.
+	
+
+Known issues: A path connected to the fuse can not be edited by dragging the crosshair
+	      nor by typing in the fields within the input that the fuse is connected to,
+	      but rather by typing in the fields of the fuse input the path is connected to.
+	      The path can be edited by any other way including the 'drag time - click' operation
+	      in ClickAppend mode, or by giving a focus to the path and dragging/adding any point
+	      including that one sitting on the crosshair.
+
+Important  : The most important parameter is the Sample Spacing which actually determines what is
+	     smoothed and what is not. The smaller value the less smoothing or the more
+	     following the curve. For sample spacing == 0, no smoothing at all, whereas for
+	     very large values of sample spacing, approximation is big, hence the result is
+             more incorrect. 
+	     By tweaking this parameter, we can select which frequency and upper of a curve noise
+	     is to be smoothed. Should never be zero.
+
+	     The parameters left sample count and right sample count are made to be equal for this
+	     fuse and they are equal to the sample width divided by sample spacing.
+	     The default for sample width, left and right sample count is 5, and for
+	     sample spacing is 1. 
+--]]--
+
+FuRegisterClass("SavitzkyGolayPointFilter", CT_Modifier, {
+	REGS_Category = "Fuses",
+	REGS_OpIconString = "SGPF",
+	REGS_OpDescription = "SG Point Filter",
+	REGID_DataType = "Point",
+	REGID_InputDataType = "Point",
+	})
+
+
+function Create()
+	InPoint = self:AddInput("Point Input", "PointInput", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+		LINK_Main = 1,
+		})
+
+	InWidth = self:AddInput("Sample Width", "SampleWidth", {
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed = 0,
+		INP_MaxScale = 10,
+		INP_Default = 5,
+		INP_Integer = true,
+		})
+
+	InOrder = self:AddInput("Order", "Order", {
+		INPID_InputControl = "SliderControl",
+		INP_MinScale = 0,
+		INP_MaxScale = 6,
+		INP_Default = 4,
+		INP_Integer = true,
+		})
+
+	InSampleSpacing = self:AddInput("Sample Spacing", "SampleSpacing", {
+		INPID_InputControl = "SliderControl",
+		INP_MinScale = 0.5,
+		INP_MaxScale = 5.0,
+		INP_Default = 1.0,
+		})
+		
+
+	OutValue = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Point",
+		LINK_Main = 1,
+		})
+end
+
+function LUDCMP(A, N, INDX, D, CODE)
+
+	local TINY = 1e-12
+	local AMAX = 0.0
+	local DUM = 0.0
+	local SUM = 0.0
+  	local VV = {}
+	local D = 1
+ 	local CODE = 0
+	local I,J,K
+
+	for I = 0, N-1 do
+		AMAX = 0.0
+   		for J = 1, N do
+     			if math.abs(A[I*N + J]) > AMAX then
+				AMAX = math.abs(A[I*N + J])
+     			end
+   		end
+ 		if AMAX < TINY then
+     			CODE = 1
+     			return
+   		end
+   		VV[I+1] = 1.0 / AMAX
+ 	end
+
+	for J = 1, N do
+		for I = 0, J-2 do
+			SUM = A[I*N + J]
+			for K = 0, I-1 do
+				SUM = SUM - A[I*N + K+1] * A[K*N + J]
+			end
+			A[I * N+J] = SUM
+		end
+		AMAX = 0.0
+		for I = J-1, N-1 do
+			SUM = A[I*N + J]
+			for K = 0, J-2 do
+				SUM = SUM - A[I*N + K+1] * A[K*N + J]
+			end
+			A[I*N + J] = SUM
+			DUM = VV[I+1] * math.abs(SUM)
+			if DUM >= AMAX then
+				IMAX = I + 1
+				AMAX = DUM
+			end
+		end
+   
+		if J ~= IMAX then
+			for K=1, N do
+				DUM = A[(IMAX-1)*N + K]
+				A[(IMAX-1)*N + K] = A[(J-1)*N + K]
+				A[(J-1)*N + K] = DUM
+			end
+			D = -D;
+			VV[IMAX] = VV[J]
+		end
+
+		INDX[J] = IMAX;
+		if math.abs(A[(J-1)*N + J]) < TINY then
+			A[(J-1)*N + J] = TINY
+		end
+
+		if J ~= N then
+			DUM = 1.0 / A[(J-1)*N + J]
+			for I = J, N-1 do
+				A[I*N + J] = A[I*N + J] * DUM
+			end
+		end 
+	end
+end
+
+function LUBKSB(A, N, INDX, B)
+
+  	local II = 0
+	local I,J
+
+	for I = 1, N do
+		local LL = INDX[I]
+    		local SUM = B[LL]
+    		B[LL] = B[I]
+    		if II ~= 0 then
+      			for J = II, I-1 do
+        			SUM = SUM - A[(I-1)*N + J] * B[J]
+      			end
+    		elseif SUM ~= 0.0 then
+      			II = I
+    		end
+    		B[I] = SUM
+  	end
+
+	for I = N, 1, -1 do
+    		local SUM = B[I]
+		if I < N then
+			for J = I+1, N do
+        			SUM = SUM - A[(I-1)*N + J] * B[J]
+			end
+		end
+    		B[I] = SUM / A[(I-1)*N + I]
+ 	end
+end
+
+function savgol(c, np, nl, nr, ld, m)
+
+	local icode = 0
+	local d = 0
+ 	local indx = {}
+	local a = {}
+  	local b = {}
+	local sum = 0.0
+	local N = m+1
+
+
+	for i = 1, N do
+		for j = 1, N do 
+			a[i*N - N + j] = 0.0
+		end
+		b[i] = 0.0
+		indx[i] = 0
+	end
+
+	for ipj = 0, 2*m do
+		sum = 0.0
+		if ipj == 0 then
+			sum = 1.0
+		end
+		for k = 1, nr do
+			sum = sum + math.pow(k, ipj)
+		end
+		for k = 1, nl do
+			sum = sum + math.pow(-k, ipj)
+		end
+		local mm = math.min(ipj, 2 * m - ipj)
+		for imj = - mm, mm, 2 do
+			a[((ipj + imj)*N + ipj - imj) / 2 + 1] = sum
+		end
+  	end
+
+	LUDCMP(a, N, indx, d, icode)
+ 
+	for j = 1, N do
+		b[j] = 0.0
+	end
+
+	b[ld+1] = 1.0
+
+	LUBKSB(a, N, indx, b)
+  
+	for kk = 1, np do
+		c[kk] = 0.0
+	end
+
+	for k = -nl, nr do
+		sum = b[1]
+		local fac = 1.0
+		for mm = 1, m do
+      			fac = fac * k
+			sum = sum + b[mm+1] * fac
+		end 
+		local kk = ((np-k) % np) + 1
+		c[kk] = sum
+	end
+end
+
+function Process(req)
+
+	local nl = InWidth:GetValue(req).Value
+	local order = InOrder:GetValue(req).Value
+	local dt = InSampleSpacing:GetValue(req).Value
+
+	nl = math.ceil(nl / dt)		-- keep the sample width the same
+	local nr = nl				-- and uniform on both sides
+
+	dt = math.max(dt, 0.0001)
+	order = math.min(order, nl+nr)
+
+	local index = {}
+	index[1] = 0
+
+	local i
+	local j = 3
+	for i = 2, nl+1 do
+		index[i] = i - j
+    		j = j + 2
+  	end
+
+	j = 2
+	for i = nl + 2, nl+nr+1 do
+		index[i] = i - j
+		j = j + 2
+	end
+
+	local failed = false
+	local datax = {}
+	local datay = {}
+
+	for i = -nl, nr do
+		local point = InPoint:GetSource(req.Time + dt*i, 0x04000000)		-- REQF_SecondaryTime
+		if point then
+			datax[i+nl+1] = point.X
+			datay[i+nl+1] = point.Y
+		else
+			filed = true
+		end
+	end
+
+	if not failed then
+		local cf = {}
+		local np = nl+nr+1
+
+		savgol(cf, np, nl, nr, 0, order)
+
+		local datx = 0.0
+		local daty = 0.0
+		for j = 1, np do
+        		datx = datx + cf[j]*datax[nl+1+index[j]]
+        		daty = daty + cf[j]*datay[nl+1+index[j]]
+		end
+
+		OutValue:Set(req, Point(datx, daty))
+	else
+		OutValue:Set(req, nil)
+	end
+end

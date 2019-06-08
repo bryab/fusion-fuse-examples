@@ -1,0 +1,190 @@
+--[[--
+ShapeTest.Fuse 
+
+A more detailed example that draws multiple shapes over an image. A good example of drawing, merging and transformation.
+
+version 1.0
+August 21st, 2007
+--]]--
+
+FuRegisterClass("Shape", CT_Tool, {
+	REGS_Category = "Fuses",
+	REGS_OpIconString = "fSh",
+	REGS_OpDescription = "Shape Fuse",
+	})
+
+function Create()
+	InSides = self:AddInput("Sides", "Sides", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed = 2.0,
+		INP_MaxScale   = 20.0,
+		INP_Default    = 5.0,
+		INP_Integer    = true,
+		})
+	
+	InCenter = self:AddInput("Center", "Center", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+		INPID_PreviewControl = "CrosshairControl",
+		})
+		
+	InSize = self:AddInput("Size", "Size", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ScrewControl",
+		INP_MinScale =    0.1,
+		INP_MaxScale =    1.0,
+		INP_Default = 	  0.5,
+		})
+		
+	InAngle = self:AddInput("Angle", "Angle", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ScrewControl",
+		INP_MinScale =   0.0,
+		INP_MaxScale = 360.0,
+		INP_Default  =   0.0,
+		})
+	
+	InThickness = self:AddInput("Thickness", "Thickness", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ScrewControl",
+		INP_MinScale =    0.0,
+		INP_MaxScale =    0.1,
+		INP_Default = 	  0.01,
+		})
+
+	InNumber = self:AddInput("Number", "Number", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed = 1.0,
+		INP_MaxScale   = 20.0,
+		INP_Default    = 5.0,
+		INP_Integer    = true,
+		})
+		
+	InScale = self:AddInput("Scale", "Scale", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinScale =    0.1,
+		INP_MaxScale =    1.0,
+		INP_Default = 	  0.8,
+		})
+		
+	InRotation = self:AddInput("Rotation", "Rotation", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ScrewControl",
+		INP_MinScale =   0.0,
+		INP_MaxScale = 360.0,
+		INP_Default  =  10.0,
+		})
+		
+	InFade = self:AddInput("Fade", "Fade", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed =  0.0,
+		INP_MaxAllowed =  1.0,
+		INP_Default = 	  0.1,
+		})
+		
+	InR = self:AddInput("Red", "Red", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ColorControl",
+		INP_MinScale = 0.0,
+		INP_MaxScale = 1.0,
+		INP_Default  = 1.0,
+		IC_ControlGroup = 1,
+		IC_ControlID = 0,
+		})
+		
+	InG = self:AddInput("Green", "Green", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ColorControl",
+		INP_MinScale = 0.0,
+		INP_MaxScale = 1.0,
+		INP_Default  = 1.0,
+		IC_ControlGroup = 1,
+		IC_ControlID = 1,
+		})
+		
+	InB = self:AddInput("Blue", "Blue", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ColorControl",
+		INP_MinScale = 0.0,
+		INP_MaxScale = 1.0,
+		INP_Default  = 1.0,
+		IC_ControlGroup = 1,
+		IC_ControlID = 2,
+		})
+		
+	InImage = self:AddInput("Input", "Input", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+
+	OutImage = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})				
+end
+
+function Process(req) 
+	local img = InImage:GetValue(req)
+	
+	local out = img:CopyOf()
+	
+	local angle     = InAngle:GetValue(req).Value * (math.pi*2) / 360.0
+	local size      = InSize:GetValue(req).Value / 2.0
+	local sides     = InSides:GetValue(req).Value
+	local num       = InNumber:GetValue(req).Value
+	local thickness = InThickness:GetValue(req).Value
+	local rotation  = InRotation:GetValue(req).Value
+	local scale     = InScale:GetValue(req).Value
+	local fade      = 1.0 - InFade:GetValue(req).Value
+	local center    = InCenter:GetValue(req)
+	local r         = InR:GetValue(req).Value
+	local g         = InG:GetValue(req).Value
+	local b         = InB:GetValue(req).Value
+	
+	local cx = center.X
+	local cy = center.Y * (out.Height * out.YScale) / (out.Width * out.XScale)
+	
+	local ic = ImageChannel(out, 8)
+	local fs = FillStyle()
+	local cs = ChannelStyle()
+	
+	ic:SetStyleFill(fs)
+
+	local x = math.cos(angle)*size
+	local y = math.sin(angle)*size
+	
+	local sh = Shape()
+
+	sh:MoveTo(x,y)
+	for i=1,sides-1 do
+		x = math.cos(i/sides * math.pi*2 + angle)*size
+		y = math.sin(i/sides * math.pi*2 + angle)*size
+		
+		sh:LineTo(x,y)
+	end
+	
+	sh:Close()
+	
+	sh = sh:OutlineOfShape(thickness, "OLT_Solid", "OJT_Bevel", 8, "SWM_Normal", 8)
+	
+	mat = Matrix4()
+	
+	for i=0,num-1 do
+		mat:Identity()
+		
+		mat:Scale(scale^i, scale^i, 1.0)
+		mat:RotZ(i*rotation)
+		mat:Move(cx, cy, 0)
+		
+		cs.Color = Pixel{R=r * fade^i,G=g * fade^i,B=b * fade^i, A = 1}
+		
+		ic:ShapeFill(sh:TransformOfShape(mat))
+		ic:PutToImage("CM_Merge", cs)
+	end
+	
+	OutImage:Set(req, out)
+end

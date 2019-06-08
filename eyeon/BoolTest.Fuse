@@ -1,0 +1,98 @@
+--[[--
+BoolTest.fuse 
+
+A trivial example Fuse which reimplements the min, max, add and subtract functions of the Channel Booleans tool using a multibutton array.
+
+version 1
+August 21st, 2007
+--]]--
+
+FuRegisterClass("Bool", CT_Tool, {
+	REGS_Category = "Fuses",
+	REGS_OpIconString = "fBl",
+	REGS_OpDescription = "Bool Fuse",
+	})
+
+function Create()
+	InOperation = self:AddInput("Operation", "Operation", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "MultiButtonControl",
+		INP_Default = 0.0,
+		{ MBTNC_AddButton = "Min", MBTNCD_ButtonWidth = 0.1, },
+		{ MBTNC_AddButton = "Max", MBTNCD_ButtonWidth = 0.2, },
+		{ MBTNC_AddButton = "Add", MBTNCD_ButtonWidth = 0.3, },
+		{ MBTNC_AddButton = "Sub", MBTNCD_ButtonWidth = 0.4, },
+		})			
+
+	InImage1 = self:AddInput("Input 1", "Input1", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+
+	InImage2 = self:AddInput("Input 2", "Input2", {
+		LINKID_DataType = "Image",
+		LINK_Main = 2,
+		})
+
+	OutImage = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})				
+end
+
+-- faster in locals
+local min = math.min
+local max = math.max
+
+-- Function table for our operations
+op_funcs = 
+{
+	[1] =	function(x,y,p1,p2) -- min
+				p1.R = min(p1.R, p2.R)
+				p1.G = min(p1.G, p2.G)
+				p1.B = min(p1.B, p2.B)
+				p1.A = min(p1.A, p2.A)
+				return p1
+			end,
+	[2] =	function(x,y,p1,p2) -- max
+				p1.R = max(p1.R, p2.R)
+				p1.G = max(p1.G, p2.G)
+				p1.B = max(p1.B, p2.B)
+				p1.A = max(p1.A, p2.A)
+				return p1
+			end,
+	[3] =	function(x,y,p1,p2) -- add
+				p1.R = p1.R + p2.R
+				p1.G = p1.G + p2.G
+				p1.B = p1.B + p2.B
+				p1.A = p1.A + p2.A
+				return p1
+			end,
+	[4] =	function(x,y,p1,p2) -- sub
+				p1.R = p1.R - p2.R
+				p1.G = p1.G - p2.G
+				p1.B = p1.B - p2.B
+				p1.A = p1.A - p2.A
+				return p1
+			end,
+}
+
+function Process(req) 
+	local img1 = InImage1:GetValue(req)
+	local img2 = InImage2:GetValue(req)
+	local operation = InOperation:GetValue(req).Value+1
+	
+	local out = nil -- fail if we don't meet below conditions
+	
+	local func = op_funcs[operation]
+	
+	-- Must have a valid operation function, and images must be same dimensions
+	if func and (img1.Width == img2.Width) and (img1.Height == img2.Height) then
+	
+		out = Image({IMG_Like = img1})
+		
+		out:ProcessPixels(0,0, img1.Width, img1.Height, img1, img2, func)
+		
+	end
+	OutImage:Set(req, out)
+end

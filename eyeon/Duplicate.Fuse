@@ -1,0 +1,441 @@
+--[[--
+The love-child of Duplicate 3D and Trails.
+
+Started from Isaac's Merge clone
+
+Requires   : Fusion 5.3 Build 55 or later
+Written By : Daniel Koch
+Written On : May 13th, 2008
+
+	Note: The REG_TimeVariant=true tag will disable static caching, causing this fuse
+	to re-render every frame. This is unfortunately necessary for correct operation
+	when Time Offset is used.
+	
+	5.3 Build 61+ is able to do this automatically when TimeOffset ~= 0, so
+	REG_TimeVariant is not necessary for those versions.
+
+--]]--
+
+FuRegisterClass("Duplicate", CT_Tool, {
+	REGS_Name = "Duplicate",
+	REGS_Category = "Fuses\\eyeon",
+	REGS_OpIconString = "Dup",
+	REGS_OpDescription = "Duplicates layers with offset",
+	
+	REG_TimeVariant = false,	-- must set this to true if Time Offset is used
+	})
+
+function Create()
+
+	InCopies = self:AddInput("Copies", "Copies", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MaxScale = 10.0,
+		INP_Default = 2.0,
+		})
+
+	InTimeOffset = self:AddInput("Time Offset", "TimeOffset", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_Default 	= 0.0,
+		INP_MinScale	= -5.0,
+		INP_MaxScale	= 5.0,
+
+--		IC_Visible = false,		-- If you show this input, you must set REG_TimeVariant = true
+		})
+
+	InCenter = self:AddInput("Center", "Center", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+		INPID_PreviewControl = "CrosshairControl",
+		})
+	InAxis = self:AddInput("Axis", "Axis", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+		INPID_PreviewControl = "CrosshairControl",
+		CHC_Style = "DiagonalCross",
+		})
+
+	InXSize = self:AddInput("Size", "XSize", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MaxScale = 5,
+		INP_Default = 1.0,
+		ICD_Center = 1, -- this sets the default value to the center of the slider
+		})
+	InYSize = self:AddInput("Y Size", "YSize", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MaxScale = 5,
+		INP_Default = 1.0,
+		ICD_Center = 1, 		-- this sets the default value to the center of the slider
+		IC_Visible = false,		-- not yet implemented
+		})
+
+	InAngle = self:AddInput("Angle", "Angle", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ScrewControl",
+		INPID_PreviewControl = "AngleControl",
+		INP_MinScale =   0.0,
+		INP_MaxScale = 360.0,
+		INP_Default = 0.0,
+		ACP_Center = InCenter,
+		ACP_Radius = InXSize,
+		PC_GrabPriority = 1 -- give this a higher priority than the rectangle
+		})
+
+	InXSize:SetAttrs({
+		INPID_PreviewControl = "RectangleControl",
+		RCP_Center = InCenter,
+		RCP_Angle = InAngle,
+		RCD_LockAspect = 1.0,
+		})
+		
+	InApply = self:AddInput("Apply Mode", "ApplyMode", {
+		LINKID_DataType = "FuID",
+		INPID_InputControl = "ComboIDControl",
+		ICD_Width = 0.5,
+		CC_LabelPosition = "Vertical",
+		INP_DoNotifyChanged = true,
+		{ CCS_AddString = "Normal", },
+		{ CCID_AddID    = "Merge", },
+		{ CCS_AddString = "Screen", },
+		{ CCS_AddString = "Dissolve", },
+		{ CCS_AddString = "Multiply", },
+		{ CCS_AddString = "Overlay", },
+		{ CCS_AddString = "Soft Light", },
+		{ CCID_AddID    = "SoftLight", },
+		{ CCS_AddString = "Hard Light", },
+		{ CCID_AddID    = "HardLight", },
+		{ CCS_AddString = "Color Dodge", },
+		{ CCID_AddID    = "ColorDodge", },
+		{ CCS_AddString = "Color Burn", },
+		{ CCID_AddID    = "ColorBurn", },
+		{ CCS_AddString = "Darken", },
+		{ CCS_AddString = "Lighten", },
+		{ CCS_AddString = "Difference", },
+		{ CCS_AddString = "Exclusion", },
+		{ CCS_AddString = "Hue", },
+		{ CCS_AddString = "Saturation", },
+		{ CCS_AddString = "Color", },
+		{ CCS_AddString = "Luminosity",  },
+		})
+		
+	InOperation = self:AddInput("Operator", "Operator", {
+		LINKID_DataType = "FuID",
+		INPID_InputControl = "ComboIDControl",
+		ICD_Width = 0.5,
+		{ CCS_AddString = "Over", },
+		{ CCS_AddString = "In", },
+		{ CCS_AddString = "Held Out", },
+		{ CCID_AddID    = "HeldOut", },
+		{ CCS_AddString = "Atop", },
+		{ CCS_AddString = "XOr", },
+		CC_LabelPosition = "Vertical",
+		})
+		
+	InAdditive = self:AddInput("Subtractive - Additive", "SubtractiveAdditive", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_Default = 1.0,
+		SLCS_LowName = "Subtractive",
+		SLCS_HighName = "Additive",
+		})
+
+	self:BeginControlNest("Gain", "GainNest", false);
+		InGainRed = self:AddInput("Red Gain", "RedGain", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_Default = 1.0,
+			})
+		InGainGreen = self:AddInput("Green Gain", "GreenGain", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_Default = 1.0,
+			})
+		InGainBlue = self:AddInput("Blue Gain", "BlueGain", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_Default = 1.0,
+			})
+		InGainAlpha = self:AddInput("Alpha Gain", "AlphaGain", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_Default = 1.0,
+			})
+	self:EndControlNest()
+		
+	InBurn = self:AddInput("Burn In", "BurnIn", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_Default = 0.0,
+		})
+	
+	InLayerBlend = self:AddInput("Blend", "LayerBlend", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_Default = 1.0,
+		})
+
+	InMergeUnder = self:AddInput("Merge Under", "MergeUnder", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "CheckboxControl",
+		INP_MinAllowed =   0.0,
+		INP_MaxAllowed =   1.0,
+		INP_Default = 0.0,
+		})
+
+
+		
+	self:AddControlPage("Jitter");
+
+	InRandomise = self:AddInput("Randomize", "Randomize", {
+		LINKID_DataType		= "Number",
+		INPID_InputControl	= "ButtonControl",
+		INP_DoNotifyChanged	= true,
+		ICD_Width			= 0.25,
+		})
+
+	InSeed = self:AddInput("Random Seed", "RandomSeed", {
+		LINKID_DataType		= "Number",
+		INPID_InputControl	= "SliderControl",
+		INP_MinAllowed,		0.0,
+		INP_MaxAllowed		= 32767.0,
+		INP_Integer			= true,
+		ICD_Width			= 0.75,
+		})
+
+
+	InJitterCenter = self:AddInput("Center", "JitterCenter", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+--		INPID_PreviewControl = "CrosshairControl",
+		INP_DefaultX		= 0,
+		INP_DefaultY		= 0,
+		})
+	InJitterAxis = self:AddInput("Axis", "JitterAxis", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+--		INPID_PreviewControl = "CrosshairControl",
+--		CHC_Style = "DiagonalCross",
+		INP_DefaultX		= 0,
+		INP_DefaultY		= 0,
+		})
+
+	InJitterXSize = self:AddInput("X Size", "JitterXSize", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed = 0,
+		INP_MaxScale = 5,
+		INP_Default = 0.0,
+		ICD_Center = 1, -- this sets the default value to the center of the slider
+		})
+
+	InJitterYSize = self:AddInput("Y Size", "JitterYSize", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed = 0,
+		INP_MaxScale = 5,
+		INP_Default = 0.0,
+		ICD_Center = 1, -- this sets the default value to the center of the slider
+		IC_Visible = false,		-- not yet implemented
+		})
+	InJitterAngle = self:AddInput("Angle", "JitterAngle", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ScrewControl",
+--		INPID_PreviewControl = "AngleControl",
+		INP_MinAllowed =   0.0,
+		INP_MaxScale = 90.0,
+		INP_Default = 0.0,
+		ACP_Center = InCenter,
+		ACP_Radius = InSize,
+		PC_GrabPriority = 1 -- give this a higher priority than the rectangle
+		})
+
+	self:BeginControlNest("Gain", "JitterGainNest", false);
+		InJitterGainRed = self:AddInput("Red Gain", "JitterRedGain", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_MinAllowed =   0.0,
+			INP_Default = 0.0,
+			})
+		InJitterGainGreen = self:AddInput("Green Gain", "JitterGreenGain", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_MinAllowed =   0.0,
+			INP_Default = 0.0,
+			})
+		InJitterGainBlue = self:AddInput("Blue Gain", "JitterBlueGain", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_MinAllowed =   0.0,
+			INP_Default = 0.0,
+			})
+		InJitterGainAlpha = self:AddInput("Alpha Gain", "JitterAlphaGain", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_MinAllowed =   0.0,
+			INP_Default = 0.0,
+			})
+	self:EndControlNest()
+	
+	InJitterLayerBlend = self:AddInput("Blend", "JitterLayerBlend", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MinAllowed =   0.0,
+		INP_Default = 0.0,
+		})
+
+	
+	InBackground = self:AddInput("Background", "Background", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+
+	OutImage = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+end
+
+
+function Process(req) 
+	local img = InBackground:GetValue(req)
+	local timeoff = InTimeOffset:GetValue(req).Value
+	local center = InCenter:GetValue(req)
+	local axis = InAxis:GetValue(req)
+	local xsize = InXSize:GetValue(req).Value
+	local ysize = InYSize:GetValue(req).Value
+	local angle = InAngle:GetValue(req).Value
+	local additive = InAdditive:GetValue(req).Value
+	local gain_red = InGainRed:GetValue(req).Value
+	local gain_green = InGainGreen:GetValue(req).Value
+	local gain_blue = InGainBlue:GetValue(req).Value
+	local gain_alpha = InGainAlpha:GetValue(req).Value
+	local burn = InBurn:GetValue(req).Value
+	local apply_mode = InApply:GetValue(req).Value
+	local apply_operator = InOperation:GetValue(req).Value
+	local copies = InCopies:GetValue(req).Value
+	local layerblend = InLayerBlend:GetValue(req).Value
+	local under = (InMergeUnder:GetValue(req).Value > 0.5)
+	
+	local jitcenter = InJitterCenter:GetValue(req)
+	local jitaxis = InJitterAxis:GetValue(req)
+	local jitxsize = InJitterXSize:GetValue(req).Value
+	local jitysize = InJitterYSize:GetValue(req).Value
+	local jitangle = InJitterAngle:GetValue(req).Value
+	local jitgain_red = InJitterGainRed:GetValue(req).Value
+	local jitgain_green = InJitterGainGreen:GetValue(req).Value
+	local jitgain_blue = InJitterGainBlue:GetValue(req).Value
+	local jitgain_alpha = InJitterGainAlpha:GetValue(req).Value
+	local jitlayerblend = InJitterLayerBlend:GetValue(req).Value
+
+	local seed = InSeed:GetValue(req).Value
+	math.randomseed(seed)
+
+	local out
+	local i
+
+	if copies == 0 then
+		out = Image({IMG_Like = img})
+		out:Fill(Pixel({0,0,0,0}))
+	elseif copies < 1 then 
+		out = img:CopyOf()
+		out:Gain(copies, copies, copies, copies)
+	elseif copies > 1 then 
+		local fg
+
+		local first, last, step
+		
+		if under then
+			out = Image({IMG_Like = img})
+			out:Fill(Pixel({0,0,0,0}))
+			first = math.ceil(copies)-1
+			last = 0
+			step = -1
+		else
+			out = img:CopyOf()
+			first = 1
+			last = math.ceil(copies)-1
+			step = 1
+		end
+		
+		for i = first,last,step do
+			local bl = math.pow(layerblend, i)
+			local rg = math.pow(gain_red  , i)
+			local gg = math.pow(gain_green, i)
+			local bg = math.pow(gain_blue , i)
+			local ag = math.pow(gain_alpha, i)
+
+			if (under and i == first) or (not under and i == last) then
+				bl = bl * (copies - i)	-- blend in the final layer
+			end
+
+			if timeoff ~= 0.0 then
+				fg = InBackground:GetSource(req.Time + timeoff * i, REQF_SecondaryTime, REQF_SecondaryTime)
+			else
+				fg = img
+			end
+
+			local jct = {}
+			local jax = {}
+			jct.X = jitcenter.X * 2 * (math.random() - 0.5)
+			jct.Y = jitcenter.Y * 2 * (math.random() - 0.5)
+			jax.X = jitaxis.X   * 2 * (math.random() - 0.5)
+			jax.Y = jitaxis.Y   * 2 * (math.random() - 0.5)
+			local jszx = jitxsize * 2 * (math.random() - 0.5)
+			local jszy = jitysize * 2 * (math.random() - 0.5)
+			local jan  = jitangle * 2 * (math.random() - 0.5)
+			local jgnr = jitgain_red   * 2 * (math.random() - 0.5)
+			local jgng = jitgain_green * 2 * (math.random() - 0.5)
+			local jgnb = jitgain_blue  * 2 * (math.random() - 0.5)
+			local jgna = jitgain_alpha * 2 * (math.random() - 0.5)
+			local jlbl = jitlayerblend * 2 * (math.random() - 0.5)
+			bl = bl + jlbl
+
+			if fg then
+				out:Merge(fg, {
+					MO_ApplyMode = apply_mode,
+					MO_ApplyOperator = apply_operator,
+					MO_XOffset = (center.X - 0.5) * i + 0.5 + jct.X,
+					MO_YOffset = (center.Y - 0.5) * i + 0.5 + jct.Y,
+					MO_XAxis = axis.X + jax.X, 
+					MO_YAxis = axis.Y + jax.Y,
+					MO_XSize = math.pow(xsize, i) * (1 + jszx),
+					MO_YSize = math.pow(ysize, i) * (1 + jszy),
+					MO_Angle = angle * i + jan,
+					MO_FgAddSub = additive,
+					MO_FgRedGain   = rg * bl + jgnr,
+					MO_FgGreenGain = gg * bl + jgng,
+					MO_FgBlueGain  = bg * bl + jgnb,
+					MO_FgAlphaGain = ag * bl + jgna,
+					MO_BurnIn = burn,          
+					})
+			end
+		end
+	else
+		out = img
+
+		-- is it connected?
+		--if InForeground:IsConnected() then
+			-- is it within the valid extent for the foreground
+			--print(InForeground:IsConnected())
+		--end
+	end
+
+	if TimeExtent and timeoff ~= 0 and copies > 1 then
+		local te = TimeExtent({req.Time, req.Time})	-- prevents static caching
+		req:SetOutputData(OutImage, out, te)
+	else
+		OutImage:Set(req, out)
+	end
+end
+
+function NotifyChanged(inp, param, time)
+
+	if inp == InApply and param then
+		InOperation:SetAttrs({IC_Visible = (param.Value == "Merge")})
+	elseif inp == InRandomise then
+		InSeed:SetSource(Number(math.random(0,32767)), time)
+	end
+end

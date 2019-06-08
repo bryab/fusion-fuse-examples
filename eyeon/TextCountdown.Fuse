@@ -1,0 +1,67 @@
+FuRegisterClass("Countdown", CT_Modifier, {
+	REGS_OpDescription = "Countdown text modifier fuse",
+	REG_OpNoMask = true,
+	REG_NoBlendCtrls = true,
+	REG_NoObjMatCtrls = true,
+	REG_NoMotionBlurCtrls = true,
+	REG_TimeVariant = true,
+	REGID_DataType = "Text",
+	})
+
+function Create()
+	InFrom = self:AddInput("From", "From", {
+		INPID_InputControl = "ScrewControl",
+		INP_MinScale = 0.0,
+		INP_MaxScale = 100.0,
+		INP_Default = 10.0,
+		})
+	InTo = self:AddInput("To", "To", {
+		INPID_InputControl = "ScrewControl",
+		INP_MinScale = 0.0,
+		INP_MaxScale = 100.0,
+		INP_Default = 0.0,
+		})
+
+	InStartTime = self:AddInput("Start Time", "StartTime", {
+		INPID_InputControl = "SliderControl",
+		INP_MinScale = 0.0,
+		INP_MaxScale = 100.0,
+		INP_Default = 0.0,
+		INP_Integer = true,
+		})
+
+	InRate = self:AddInput("Rate", "Rate", {
+		INPID_InputControl = "SliderControl",
+		INP_MinScale = 0.0,
+		INP_MaxScale = 10.0,
+		INP_Default = 1.0,
+		})
+		
+	OutValue = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Text",
+		LINK_Main = 1,
+		})				
+end
+
+function Process(req)
+
+	local from = InFrom:GetValue(req).Value
+	local to   = InTo:GetValue(req).Value
+	local starttime = InStartTime:GetValue(req).Value
+	local rate = InRate:GetValue(req).Value
+	
+	if to > from then
+		rate = -rate
+	end
+
+	local time = math.max(req.Time - starttime, 0)
+	local result = from + time * -rate
+
+	if to > from then
+		result = math.min(result, to)
+	else
+		result = math.max(result, to)
+	end
+
+	OutValue:Set(req, Text(result))
+end

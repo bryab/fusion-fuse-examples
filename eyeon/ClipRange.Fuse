@@ -1,0 +1,120 @@
+--[[--
+ClipRange.fuse 
+
+An example Fuse which will clamps the high and low ranges values of the Red, Green, Blue, and Alpha values of an image using range controls.
+
+version 1.0
+August 21st, 2007
+--]]--
+
+FuRegisterClass("ClipRange", CT_Tool, {
+	REGS_Category = "Fuses",
+	REGS_OpIconString = "fCR",
+	REGS_OpDescription = "Clip-Range Fuse",
+	})
+
+function Create()
+	InRLow = self:AddInput("Red Low", "RedLow", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "RangeControl",
+		INP_Default = 0.0,
+		IC_ControlGroup = 1,
+		IC_ControlID = 0,
+		})			
+	
+	InRHigh = self:AddInput("Red High", "RedHigh", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "RangeControl",
+		INP_Default = 1.0,
+		IC_ControlGroup = 1,
+		IC_ControlID = 1,
+		})			
+
+	InGLow = self:AddInput("Green Low", "GreenLow", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "RangeControl",
+		INP_Default = 0.0,
+		IC_ControlGroup = 2,
+		IC_ControlID = 0,
+		})			
+	
+	InGHigh = self:AddInput("Green High", "GreenHigh", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "RangeControl",
+		INP_Default = 1.0,
+		IC_ControlGroup = 2,
+		IC_ControlID = 1,
+		})			
+		
+	InBLow = self:AddInput("Blue Low", "BlueLow", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "RangeControl",
+		INP_Default = 0.0,
+		IC_ControlGroup = 3,
+		IC_ControlID = 0,
+		})			
+	
+	InBHigh = self:AddInput("Blue High", "BlueHigh", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "RangeControl",
+		INP_Default = 1.0,
+		IC_ControlGroup = 3,
+		IC_ControlID = 1,
+		})			
+
+	InALow = self:AddInput("Alpha Low", "AlphaLow", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "RangeControl",
+		INP_Default = 0.0,
+		IC_ControlGroup = 4,
+		IC_ControlID = 0,
+		})			
+	
+	InAHigh = self:AddInput("Alpha High", "AlphaHigh", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "RangeControl",
+		INP_Default = 1.0,
+		IC_ControlGroup = 4,
+		IC_ControlID = 1,
+		})			
+		
+	InImage = self:AddInput("Input", "Input", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+
+	OutImage = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})				
+end
+
+function mpfunc(x,y, p)
+	
+	p.R = math.max(math.min(p.R, rhigh), rlow)
+	p.G = math.max(math.min(p.G, ghigh), glow)
+	p.B = math.max(math.min(p.B, bhigh), blow)
+	p.A = math.max(math.min(p.A, ahigh), alow)
+	
+	return p
+end
+
+function Process(req)
+	local img  = InImage:GetValue(req)
+	
+	mpdata = {}
+	mpdata.rlow  = InRLow:GetValue(req).Value
+	mpdata.rhigh = InRHigh:GetValue(req).Value
+	mpdata.glow  = InGLow:GetValue(req).Value
+	mpdata.ghigh = InGHigh:GetValue(req).Value
+	mpdata.blow  = InBLow:GetValue(req).Value
+	mpdata.bhigh = InBHigh:GetValue(req).Value
+	mpdata.alow  = InALow:GetValue(req).Value
+	mpdata.ahigh = InAHigh:GetValue(req).Value
+	
+	local out = Image({IMG_Like = img})
+	
+	out:MultiProcessPixels(nil, mpdata, 0,0, img.Width, img.Height, img, mpfunc)
+	
+	OutImage:Set(req, out)
+end

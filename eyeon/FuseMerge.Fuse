@@ -1,0 +1,302 @@
+--[[--
+This Fuse clones the functionality of the standard Merge tool Fusion as closely as possible.
+It is not intended to replace the Merge tool, but to act as an example for anyone creating 
+a Fuse which needs to mimic part of what Merge does.
+
+Currently this tool does not 
+
+ - Fail when the foreground has no image but is within its valid extent.
+ - Concatenate, so no Flatten Transform
+ - Offer an Invert Transform Option 
+ - Display an Image Overlay for the Foreground
+ 
+Requires   : Fusion 5.21 Build 23 or later
+Written By : Isaac Guenard [izyk@eyeonline.com]
+Written On : November 30th, 2007
+
+Things to document :
+self.Comp
+Color Control
+	IC_ControlGroup = 1,
+	IC_ControlID = 12, -- That's Z
+
+	
+--]]--
+
+FuRegisterClass("FuseMerge", CT_Tool, {
+	REGS_Name = "Fuse Merge",
+	REGS_Category = "Fuses\\Clones\\Composite",
+	REGS_OpIconString = "FMrg",
+	REGS_OpDescription = "Fuse Merge",
+	})
+
+function Create()
+	
+	InCenter = self:AddInput("Center Bob", "CenterBob", {
+		LINKID_DataType = "Point",
+		INPID_InputControl = "OffsetControl",
+		INPID_PreviewControl = "CrosshairControl",
+		})
+
+	InSize = self:AddInput("Size", "Size", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_MaxScale = 5,
+		INP_Default = 1.0,
+		ICD_Center = 1, -- this sets the default value to the center of the slider
+		})
+
+	InAngle = self:AddInput("Angle", "Angle", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ScrewControl",
+		INPID_PreviewControl = "AngleControl",
+		INP_MinScale =   0.0,
+		INP_MaxScale = 360.0,
+		INP_Default = 0.0,
+		ACP_Center = InCenter,
+		ACP_Radius = InSize,
+		PC_GrabPriority = 1 -- give this a higher priority than the rectangle
+		})
+	
+	InSize:SetAttrs({
+		INPID_PreviewControl = "RectangleControl",
+		RCP_Center = InCenter,
+		RCP_Angle = InAngle,
+		RCD_LockAspect = 1.0,
+		})
+		
+	InApply = self:AddInput("Apply Mode", "ApplyMode", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ComboControl",
+		INP_Default = 0.0,
+		INP_Integer = true,
+		ICD_Width = 0.5,
+		CC_LabelPosition = "Vertical",
+		INP_DoNotifyChanged = true,
+		{ CCS_AddString = "Normal", },
+		{ CCS_AddString = "Screen", },
+		{ CCS_AddString = "Dissolve", },
+		{ CCS_AddString = "Multiply", },
+		{ CCS_AddString = "Overlay", },
+		{ CCS_AddString = "Soft Light", },
+		{ CCS_AddString = "Hard Light", },
+		{ CCS_AddString = "Color Dodge", },
+		{ CCS_AddString = "Color Burn", },
+		{ CCS_AddString = "Darken", },
+		{ CCS_AddString = "Lighten", },
+		{ CCS_AddString = "Difference", },
+		{ CCS_AddString = "Exclusion", },
+		{ CCS_AddString = "Hue", },
+		{ CCS_AddString = "Saturation", },
+		{ CCS_AddString = "Color", },
+		{ CCS_AddString = "Luminosity",  },
+		})
+		
+	InOperation = self:AddInput("Operator", "Operator", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ComboControl",
+		INP_Default = 0.0,
+		INP_Integer = true,
+		ICD_Width = 0.5,
+		{ CCS_AddString = "Over", },
+		{ CCS_AddString = "In", },
+		{ CCS_AddString = "Held Out", },
+		{ CCS_AddString = "Atop", },
+		{ CCS_AddString = "XOr", },
+		CC_LabelPosition = "Vertical",
+		})
+		
+	InAdditive = self:AddInput("Subtractive - Additive", "SubtractiveAdditive", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_Default = 1.0,
+		SLCS_LowName = "Subtractive",
+		SLCS_HighName = "Additive",
+		})
+
+	InAlpha = self:AddInput("Alpha Gain", "AlphaGain", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_Default = 1.0,
+		})
+		
+	InBurn = self:AddInput("Burn In", "BurnIn", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_Default = 0.0,
+		})
+	
+	self:CloneInput(InBlend, "BlendClone", {})
+	--[[--
+	-- This is not working just yet.
+	self:CloneInput(InBlend, "BlendClone")
+	--]]--	
+	
+	self:BeginControlNest("Reference size", "ReferenceSize", false, {})
+		
+		InUseFormat = self:AddInput("Use Frame Format Settings", "UseFrameFormatSettings", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "CheckboxControl",
+			INP_Integer = true,
+			INP_Default = 0.0,
+			INP_DoNotifyChanged = true,
+			})
+		
+		InWidth = self:AddInput("Width", "Width", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_Default = 1.0,
+			INP_Integer = true,
+			INP_MinAllowed = 1.0,
+			INP_MaxScale = 2048.0,
+			INP_MaxAllowed = 32767.0,
+			INP_DoNotifyChanged = true,
+			})
+			
+		InHeight = self:AddInput("Height", "Height", {
+			LINKID_DataType = "Number",
+			INPID_InputControl = "SliderControl",
+			INP_Default = 1.0,
+			INP_Integer = true,
+			INP_MinAllowed = 1.0,
+			INP_MaxScale = 2048.0,
+			INP_MaxAllowed = 32767.0,
+			INP_DoNotifyChanged = true,
+			})
+		
+	self:EndControlNest()
+	
+	self:AddControlPage("Channels", "Channels")
+	
+	InPerformDepthMerge = self:AddInput("Perform Depth Merge", "PerformDepthMerge", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "CheckboxControl",
+		INP_Integer = true,
+		INP_Default = 0.0,
+		})
+		
+	InFGZ = self:AddInput("Foreground Z-Offset", "ForegroundZOffset", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "ColorControl",
+		INP_MinScale = -1000.0,
+		INP_MaxScale = 1000.0,
+		INP_Default = 0.0,
+		IC_ControlGroup = 1,
+		IC_ControlID = 12, -- That's Z
+		})
+		
+	InBGAdditive = self:AddInput("Subtractive - Additive", "BackgroundSubtractiveAdditive", {
+		LINKID_DataType = "Number",
+		INPID_InputControl = "SliderControl",
+		INP_Default = 1.0,
+		SLCS_LowName = "Subtractive",
+		SLCS_HighName = "Additive",
+		})
+	
+	InBackground = self:AddInput("Background", "Background", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})
+
+	InForeground = self:AddInput("Foreground", "Foreground", {
+		LINKID_DataType = "Image",
+		LINK_Main = 2,
+		INP_Required = false,
+		-- once this works - ask how to access the relevant preferences
+		-- fusion:GetPrefs().Global.Tweaks
+		-- INPID_PreviewControl = "ImgOverlayControl",
+		})
+
+	OutImage = self:AddOutput("Output", "Output", {
+		LINKID_DataType = "Image",
+		LINK_Main = 1,
+		})				
+end
+
+
+function Process(req) 
+	local bg = InBackground:GetValue(req)
+	local fg = InForeground:GetValue(req)
+	local center = InCenter:GetValue(req)
+	local size = InSize:GetValue(req).Value
+	local angle = InAngle:GetValue(req).Value
+	local additive = InAdditive:GetValue(req).Value
+	local gain_alpha = InAlpha:GetValue(req).Value
+	local burn = InBurn:GetValue(req).Value
+	local apply_mode = InApply:GetValue(req).Value + 1
+	local apply_operator = InOperation:GetValue(req).Value + 1
+	
+	local apply_modes = { 
+		"Merge", 
+		"Screen", 
+		"Dissolve",
+		"Multiply",
+		"Overlay",
+		"SoftLight",
+		"HardLight",
+		"ColorDodge",
+		"ColorBurn",
+		"Darken",
+		"Lighten",
+		"Difference",
+		"Exclusion",
+		"Hue",
+		"Saturation",
+		"Color",
+		"Luminosity", 
+		}
+
+	local apply_operators = { "Over", "In", "Held Out", "Atop", "XOr", }
+	local doZ = (InPerformDepthMerge:GetValue(req).Value == 1)
+	local bg_additive = InBGAdditive :GetValue(req).Value
+	
+	local out = bg:Copy()
+		
+	if fg then
+		out:Merge(fg, {
+			MO_ApplyMode = apply_modes[apply_mode],
+			MO_ApplyOperator = apply_operators[apply_operator],
+			MO_XOffset = center.X,
+			MO_YOffset = center.Y,
+			MO_XSize = size,
+			MO_YSize = size,
+			MO_Angle = angle,
+			MO_FgAddSub = additive,
+			MO_BgAddSub = bg_additive,
+			MO_BurnIn = burn,
+			MO_FgAlphaGain = gain_alpha,
+			MO_Invert = 1,
+			MO_DoZ = doZ,
+			})
+	else
+		-- is it connected?
+		--if InForeground:IsConnected() then
+			-- is it within the valid extent for the foreground
+			--print(InForeground:IsConnected())
+		--end
+	end
+	
+	
+	OutImage:Set(req, out)
+end
+
+function NotifyChanged(inp, param, time)
+
+	if inp == InApply then
+		InOperation:SetAttrs({IC_Visible = (param.Value == 0)})
+		
+	elseif inp == InWidth then
+		InCenter:SetAttrs({OFCD_DisplayXScale = param.Value})
+	
+	elseif inp == InHeight then
+		InCenter:SetAttrs({OFCD_DisplayYScale = param.Value})
+	
+	elseif inp == InUseFormat then
+		if param.Value == 1 then
+			ff = self.Comp:GetPrefs().Comp.FrameFormat
+			InWidth:SetSource( Number(ff.Width), TIME_UNDEFINED)
+			InHeight:SetSource( Number(ff.Height), TIME_UNDEFINED)
+		end
+	end
+	
+end
